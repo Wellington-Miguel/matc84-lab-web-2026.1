@@ -1,0 +1,76 @@
+# docker-compose.yml
+# Ambiente local de desenvolvimento — simula AWS localmente
+# Uso: docker compose up -d
+
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL (simula Aurora) ─────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: bebidas-postgres
+    environment:
+      POSTGRES_DB:       bebidas
+      POSTGRES_USER:     bebidasadmin
+      POSTGRES_PASSWORD: senha_local_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/migrations:/docker-entrypoint-initdb.d  # roda as migrations automaticamente
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bebidasadmin -d bebidas"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis (simula ElastiCache) ─────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: bebidas-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 3
+
+  # ── LocalStack (simula SQS da AWS localmente) ──────────────────────────────
+  localstack:
+    image: localstack/localstack:latest
+    container_name: bebidas-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      SERVICES: sqs
+      DEFAULT_REGION: us-east-1
+    volumes:
+      - "./infra/localstack:/etc/localstack/init/ready.d"  # script de setup das filas
+
+  # ── Order Service ──────────────────────────────────────────────────────────
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order/Dockerfile
+    container_name: bebidas-order
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL:         postgresql://bebidasadmin:senha_local_dev@postgres/bebidas
+      REDIS_URL:            redis://redis:6379
+      SQS_ORDER_QUEUE_URL:  http://localstack:4566/000000000000/bebidas-orders.fifo
+      AWS_DEFAULT_REGION:   us-east-1
+      AWS_ACCESS_KEY_ID:    test       # localstack aceita qualquer valor
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL:     http://localstack:4566
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

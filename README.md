@@ -1,38 +1,52 @@
-# MATC84 - Laboratório de Programação Web
+# Distribuidora de Bebidas — Sistema Distribuído de Alta Escala
 
-Bem-vindo ao repositório oficial da disciplina **MATC84 - Laboratório de Programação Web**. Este espaço foi criado para centralizar, versionar e acompanhar o desenvolvimento dos projetos práticos da nossa turma ao longo do semestre.
+## Arquitetura
+- **180k vendas/dia** | **1000 req/s** | **latência p99 < 500ms** | **disponibilidade ≥ 90%**
+- AWS (us-east-1) | Python | Terraform | Aurora PostgreSQL | ElastiCache Redis | SQS
 
----
+## Estrutura
+```
+bebidas-distribuidor/
+├── infra/                        # Infraestrutura como código (Terraform)
+│   ├── modules/
+│   │   ├── vpc/                  # Rede: subnets públicas/privadas, NAT
+│   │   ├── alb/                  # Application Load Balancer
+│   │   ├── asg/                  # Auto Scaling Group (EC2 stateless)
+│   │   ├── rds/                  # Aurora PostgreSQL Multi-AZ
+│   │   ├── elasticache/          # Redis (sessão + Data Grid SBA)
+│   │   ├── sqs/                  # Filas de mensageria (+ DLQ)
+│   │   └── lambda/               # Data Writers (consumidores SQS)
+│   └── environments/
+│       └── dev/                  # Configuração do ambiente de dev
+│
+├── services/                     # Microsserviços Python (FastAPI)
+│   ├── identity/                 # Autenticação JWT stateless
+│   ├── order/                    # Pedidos + idempotência
+│   ├── inventory/                # Estoque + OCC Redis
+│   ├── catalog/                  # Catálogo de produtos
+│   ├── payment/                  # Pagamentos
+│   └── notification/             # Alertas (email/SMS)
+│
+├── shared/                       # Código compartilhado entre serviços
+│   ├── retry.py                  # Exponential Backoff + Jitter
+│   ├── idempotency.py            # Protocolo Check-then-Act
+│   └── logger.py                 # Logs estruturados JSON
+│
+└── .github/workflows/            # CI/CD (GitHub Actions)
+    └── deploy.yml
+```
 
-## 📌 Objetivo do Repositório
+## Como rodar localmente
+```bash
+# 1. Configure AWS CLI
+aws configure
 
-O foco desta disciplina é o desenvolvimento de um **produto final** que será construído de forma incremental. 
-* **Evolução Semanal:** Toda semana o projeto deve receber novas implementações. Cada entrega semanal se soma à anterior, resultando no produto que será avaliado no final do semestre.
-* **Apresentações e Feedbacks:** As apresentações em sala de aula servem como marcos de entrega e, principalmente, como um espaço aberto para tirar dúvidas e corrigir os trabalhos com o suporte do professor.
+# 2. Suba a infraestrutura
+cd infra/environments/dev
+terraform init && terraform apply
 
----
-
-## 🌿 Organização de Branches e Nomenclatura
-
-Para manter o repositório organizado e evitar conflitos de código, adotaremos uma estrutura estrita de branches. **Ninguém deve commitar diretamente na branch `main`.**
-
-### Padrão de Nomenclatura das Equipes:
-Cada equipe trabalhará exclusivamente dentro de sua própria branch. O nome da branch deve seguir rigorosamente o seguinte formato (em letras minúsculas e separados por hífen):
-
-`equipe-[numero]-[nome-do-projeto-ou-grupo]`
-
-**Exemplos Práticos:**
-* `equipe-01-web-vanguard`
-* `equipe-02-dev-solutions`
-* `equipe-03-alpha-project`
-
-> ⚠️ **Atenção:** Cada aluno deve realizar suas contribuições e commits diretamente na branch correspondente à sua equipe.
-
----
-
-## 🤝 Como Participar e Contribuir
-
-1. **Acesso ao Repositório:** Certifique-se de que enviou seu e-mail do GitHub na lista do WhatsApp para ser adicionado como colaborador.
-2. **Clone o Repositório:** Clone o projeto para sua máquina local:
-   ```bash
-   git clone [https://github.com/](https://github.com/)[seu-usuario]/[nome-do-repositorio].git
+# 3. Rode um serviço
+cd services/order
+pip install -r requirements.txt
+uvicorn main:app --reload
+```

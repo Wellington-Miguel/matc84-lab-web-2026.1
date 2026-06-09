@@ -1,0 +1,137 @@
+# .github/workflows/deploy.yml
+name: CI/CD — Distribuidora de Bebidas
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION:   us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+
+jobs:
+  # ── Testes ────────────────────────────────────────────────────────────────────
+  test:
+    name: Testes e Lint
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB:       bebidas_test
+          POSTGRES_USER:     test
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r services/order/requirements.txt pytest pytest-asyncio httpx
+
+      - name: Rodar migrations de teste
+        run: |
+          PGPASSWORD=test psql -h localhost -U test -d bebidas_test \
+            -f infra/migrations/001_initial_schema.sql
+
+      - name: Rodar testes
+        env:
+          DATABASE_URL: postgresql://test:test@localhost/bebidas_test
+          REDIS_URL:    redis://localhost:6379
+          PYTHONPATH:   .
+        run: pytest services/ shared/ -v --tb=short
+
+  # ── Build e Push para ECR ─────────────────────────────────────────────────────
+  build:
+    name: Build Docker → ECR
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Login no ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Metadata da imagem
+        id: meta
+        run: echo "tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+
+      - name: Build e Push — Order Service
+        run: |
+          docker build \
+            -t $ECR_REGISTRY/bebidas-order:${{ steps.meta.outputs.tag }} \
+            -t $ECR_REGISTRY/bebidas-order:latest \
+            -f services/order/Dockerfile .
+          docker push $ECR_REGISTRY/bebidas-order:${{ steps.meta.outputs.tag }}
+          docker push $ECR_REGISTRY/bebidas-order:latest
+
+  # ── Deploy ────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy → ECS
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Verificar Error Budget antes do deploy
+        run: |
+          # Consulta CloudWatch — se error budget exaurido, bloqueia o deploy
+          ERROR_RATE=$(aws cloudwatch get-metric-statistics \
+            --namespace AWS/ApplicationELB \
+            --metric-name HTTPCode_Target_5XX_Count \
+            --statistics Sum \
+            --period 3600 \
+            --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+            --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+            --query 'Datapoints[0].Sum' \
+            --output text 2>/dev/null || echo "0")
+
+          echo "Taxa de erros na última hora: $ERROR_RATE"
+
+          if (( $(echo "$ERROR_RATE > 100" | bc -l) )); then
+            echo "❌ Error Budget exaurido! Deploy bloqueado."
+            exit 1
+          fi
+          echo "✅ Error Budget OK. Prosseguindo com o deploy."
+
+      - name: Deploy no ECS (Rolling Update)
+        run: |
+          aws ecs update-service \
+            --cluster bebidas-cluster \
+            --service bebidas-order-service \
+            --force-new-deployment
