@@ -1,0 +1,41 @@
+// Cliente da API de Sugestões com timeout + fallback.
+// Princípio de resiliência: sugestão é OPCIONAL. Se falhar/expirar,
+// a compra segue normalmente — nunca propagamos o erro pra cima.
+
+const BASE = process.env.SUGESTOES_URL ?? "http://localhost:4002";
+const TIMEOUT_MS = Number(process.env.SUGESTOES_TIMEOUT_MS ?? 800);
+
+export interface Sugestao {
+  produto: string;
+  motivo: string;
+}
+
+export interface ResultadoSugestao {
+  ok: boolean;
+  itens: Sugestao[];
+  fonte: "servico" | "fallback";
+  erro?: string;
+}
+
+export async function buscarSugestoes(
+  produto: string
+): Promise<ResultadoSugestao> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  try {
+    const resp = await fetch(
+      `${BASE}/sugestoes?produto=${encodeURIComponent(produto)}`,
+      { signal: ctrl.signal }
+    );
+    if (!resp.ok) throw new Error(`status ${resp.status}`);
+    const data = (await resp.json()) as { itens: Sugestao[] };
+    return { ok: true, itens: data.itens ?? [], fonte: "servico" };
+  } catch (err) {
+    // Degradação graciosa: log e segue sem sugestões.
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn(`[sugestoes] indisponível (${msg}) — seguindo sem sugestão`);
+    return { ok: false, itens: [], fonte: "fallback", erro: msg };
+  } finally {
+    clearTimeout(t);
+  }
+}
