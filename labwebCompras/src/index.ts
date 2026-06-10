@@ -50,6 +50,15 @@ app.post("/compras", idempotency, async (req: Request, res: Response) => {
     return;
   }
 
+    const existing = await pool.query(
+    `SELECT 1 FROM compras WHERE produto = $1 AND quantidade = $2 AND valor_total = $3`,
+    [produto, quantidade, valor_total]
+  );
+
+  if (existing.rowCount && existing.rowCount > 0) {
+    res.status(429).json({ erro: "Pedido já realizado" });
+  }
+
   // Atraso artificial: dá tempo de demonstrar idempotência (cliques repetidos
   // durante o processamento) e o estado de carregamento no front.
   await new Promise((r) => setTimeout(r, 3000));
