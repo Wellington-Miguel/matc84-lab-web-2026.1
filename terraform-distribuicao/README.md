@@ -35,23 +35,30 @@ Cognito JWT Authorizer — todas as rotas exceto /auth/*
 ```
 terraform-distribuicao/
 ├── modules/
-│   ├── stack/            # MÓDULO CANÔNICO — compõe toda a infra;
-│   │                     # alterações aqui refletem em todos os ambientes
-│   ├── lambda-workload/  # Módulo canônico de Lambda (main, iam, cloudwatch, outputs)
-│   ├── networking/       # VPC, subnets, NAT, security groups
-│   ├── api-gateway/      # HTTP API + authorizer Cognito + rotas + access logs
-│   ├── auth/             # Cognito User Pool + App Client
-│   ├── datastore/        # Tabelas DynamoDB (pedidos, produtos)
-│   ├── messaging/        # SQS + DLQ + alarmes CloudWatch
-│   └── search/           # OpenSearch + slow logs
+│   ├── stack/         # MÓDULO CANÔNICO — compõe toda a infra;
+│   │                  # alterações aqui refletem em todos os ambientes
+│   ├── lambda/        # Módulo canônico de Lambda (main, iam, cloudwatch, outputs)
+│   ├── cloudwatch/    # Observabilidade global: tópico SNS de alarmes + dashboard
+│   ├── vpc/           # VPC, subnets, NAT, security groups
+│   ├── api-gateway/   # HTTP API + authorizer Cognito + rotas + access logs
+│   ├── cognito/       # Cognito User Pool + App Client
+│   ├── dynamodb/      # Tabelas DynamoDB (pedidos, produtos)
+│   ├── sqs/           # SQS + DLQ + alarmes CloudWatch
+│   └── opensearch/    # OpenSearch + slow logs
 ├── envs/
-│   ├── dev/              # providers.tf, variables.tf, main.tf, outputs.tf
-│   └── prod/             # idem — instancia modules/stack com environment = "prod"
-└── placeholder/          # Bootstrap inicial das Lambdas (zip gerado em runtime)
+│   ├── dev/           # providers.tf, variables.tf, main.tf, outputs.tf
+│   └── prod/          # idem — instancia modules/stack com environment = "prod"
+└── placeholder/       # Bootstrap inicial das Lambdas (zip gerado em runtime)
 ```
 
+As pastas dos módulos usam o nome do serviço AWS correspondente. O módulo
+`cloudwatch` centraliza a observabilidade do projeto: um tópico SNS único para
+onde todos os alarmes apontam (`alarm_actions`) e um dashboard agregando as
+métricas de SQS e Lambda. Defina `alarm_email` no ambiente para receber as
+notificações por e-mail.
+
 Cada workload Lambda (auth, pedidos, produtos, pagamentos) é uma instância do
-módulo `lambda-workload`, que padroniza: log group CloudWatch com
+módulo `lambda`, que padroniza: log group CloudWatch com
 `retention_in_days = 15` (estratégia de expiração de logs), IAM role com
 política base (logs + VPC) + statements específicos por parâmetro, SnapStart,
 alias `live` e VPC config.

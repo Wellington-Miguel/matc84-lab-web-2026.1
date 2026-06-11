@@ -15,6 +15,9 @@ resource "aws_cloudwatch_metric_alarm" "pedidos_dlq_not_empty" {
   treat_missing_data  = "notBreaching"
   alarm_description   = "DLQ de pedidos não está vazia — Lambda produtos falhou ${var.max_receive_count}× seguidas"
 
+  alarm_actions = var.alarm_actions
+  ok_actions    = var.alarm_actions
+
   dimensions = {
     QueueName = aws_sqs_queue.pedidos_dlq.name
   }
@@ -37,6 +40,9 @@ resource "aws_cloudwatch_metric_alarm" "pedidos_age" {
   threshold           = 3600 # 1 hora
   treat_missing_data  = "notBreaching"
   alarm_description   = "Mensagem mais antiga da fila > 1h — verificar Lambda produtos (consumidora SQS)"
+
+  alarm_actions = var.alarm_actions
+  ok_actions    = var.alarm_actions
 
   dimensions = {
     QueueName = aws_sqs_queue.pedidos.name

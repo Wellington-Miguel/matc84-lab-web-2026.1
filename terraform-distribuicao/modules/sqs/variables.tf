@@ -30,3 +30,9 @@ variable "max_receive_count" {
   type        = number
   default     = 3
 }
+
+variable "alarm_actions" {
+  description = "ARNs notificados quando os alarmes disparam (ex: tópico SNS global do módulo cloudwatch)"
+  type        = list(string)
+  default     = []
+}

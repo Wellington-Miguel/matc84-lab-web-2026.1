@@ -43,6 +43,16 @@ output "sqs_pedidos_dlq_url" {
   value       = module.stack.sqs_pedidos_dlq_url
 }
 
+output "cloudwatch_alarms_topic_arn" {
+  description = "ARN do tópico SNS global de alarmes"
+  value       = module.stack.cloudwatch_alarms_topic_arn
+}
+
+output "cloudwatch_dashboard_name" {
+  description = "Nome do dashboard CloudWatch do projeto"
+  value       = module.stack.cloudwatch_dashboard_name
+}
+
 output "vpc_id" {
   description = "ID da VPC"
   value       = module.stack.vpc_id

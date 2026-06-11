@@ -111,3 +111,10 @@ variable "log_retention_days" {
   type        = number
   default     = 15
 }
+
+# --- Observabilidade ---
+variable "alarm_email" {
+  description = "E-mail inscrito no tópico SNS de alarmes (vazio = sem inscrição)"
+  type        = string
+  default     = ""
+}

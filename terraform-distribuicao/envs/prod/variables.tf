@@ -27,3 +27,9 @@ variable "opensearch_instance_type" {
   type        = string
   default     = "t3.small.search"
 }
+
+variable "alarm_email" {
+  description = "E-mail inscrito no tópico SNS de alarmes (vazio = sem inscrição)"
+  type        = string
+  default     = ""
+}

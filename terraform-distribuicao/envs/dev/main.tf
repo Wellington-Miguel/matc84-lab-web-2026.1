@@ -13,4 +13,5 @@ module "stack" {
   lambda_memory_mb         = var.lambda_memory_mb
   opensearch_instance_type = var.opensearch_instance_type
   log_retention_days       = var.log_retention_days
+  alarm_email              = var.alarm_email
 }

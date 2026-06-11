@@ -1,10 +1,21 @@
 # =============================================================================
 # Composição da infraestrutura — todos os componentes são módulos.
-# Workloads Lambda são instâncias do módulo canônico lambda-workload.
+# Workloads Lambda são instâncias do módulo canônico modules/lambda.
 # =============================================================================
 
-module "networking" {
-  source = "../networking"
+# Observabilidade global: tópico SNS de alarmes + dashboard único.
+# Instanciado primeiro pois os alarmes dos demais módulos apontam para o SNS.
+module "cloudwatch" {
+  source = "../cloudwatch"
+
+  prefix       = local.prefix
+  aws_region   = var.aws_region
+  alarm_email  = var.alarm_email
+  lambda_names = keys(local.lambda_handlers)
+}
+
+module "vpc" {
+  source = "../vpc"
 
   prefix               = local.prefix
   vpc_cidr             = var.vpc_cidr
@@ -13,47 +24,48 @@ module "networking" {
   azs                  = local.azs
 }
 
-module "auth_idp" {
-  source = "../auth"
+module "cognito" {
+  source = "../cognito"
 
   prefix     = local.prefix
   aws_region = var.aws_region
 }
 
-module "datastore" {
-  source = "../datastore"
+module "dynamodb" {
+  source = "../dynamodb"
 
   prefix = local.prefix
 }
 
-module "messaging" {
-  source = "../messaging"
+module "sqs" {
+  source = "../sqs"
 
   prefix                 = local.prefix
   visibility_timeout_s   = var.sqs_visibility_timeout_s
   message_retention_days = var.sqs_message_retention_days
   max_receive_count      = var.sqs_max_receive_count
+  alarm_actions          = [module.cloudwatch.sns_topic_arn]
 }
 
-module "search" {
-  source = "../search"
+module "opensearch" {
+  source = "../opensearch"
 
   prefix               = local.prefix
   instance_type        = var.opensearch_instance_type
   volume_gb            = var.opensearch_volume_gb
-  subnet_ids           = module.networking.private_subnet_ids
-  security_group_ids   = [module.networking.opensearch_security_group_id]
+  subnet_ids           = module.vpc.private_subnet_ids
+  security_group_ids   = [module.vpc.opensearch_security_group_id]
   master_user_role_arn = module.lambda_auth.role_arn
   log_retention_days   = var.log_retention_days
 }
 
 # =============================================================================
-# Workloads Lambda (módulo canônico)
+# Workloads Lambda (módulo canônico modules/lambda)
 # =============================================================================
 
 # Auth: valida tokens JWT do Cognito + consulta sessões no OpenSearch
 module "lambda_auth" {
-  source = "../lambda-workload"
+  source = "../lambda"
 
   function_name      = "${local.prefix}-auth"
   handler            = local.lambda_handlers.auth
@@ -61,14 +73,14 @@ module "lambda_auth" {
   memory_size        = var.lambda_memory_mb
   timeout            = var.lambda_timeout_s
   filename           = data.archive_file.placeholder.output_path
-  subnet_ids         = module.networking.private_subnet_ids
-  security_group_ids = [module.networking.lambda_security_group_id]
+  subnet_ids         = module.vpc.private_subnet_ids
+  security_group_ids = [module.vpc.lambda_security_group_id]
   log_retention_days = var.log_retention_days
 
   environment_variables = merge(local.lambda_common_env, {
-    OPENSEARCH_ENDPOINT = "https://${module.search.endpoint}"
-    COGNITO_POOL_ID     = module.auth_idp.user_pool_id
-    COGNITO_CLIENT_ID   = module.auth_idp.client_id
+    OPENSEARCH_ENDPOINT = "https://${module.opensearch.endpoint}"
+    COGNITO_POOL_ID     = module.cognito.user_pool_id
+    COGNITO_CLIENT_ID   = module.cognito.client_id
     COGNITO_REGION      = var.aws_region
   })
 
@@ -81,7 +93,7 @@ module "lambda_auth" {
         "es:ESHttpPut",
         "es:ESHttpDelete",
       ]
-      resources = ["${module.search.domain_arn}/*"]
+      resources = ["${module.opensearch.domain_arn}/*"]
     },
     {
       sid = "CognitoIDP"
@@ -89,14 +101,14 @@ module "lambda_auth" {
         "cognito-idp:GetUser",
         "cognito-idp:AdminGetUser",
       ]
-      resources = [module.auth_idp.user_pool_arn]
+      resources = [module.cognito.user_pool_arn]
     },
   ]
 }
 
 # Pedidos: CRUD de pedidos no DynamoDB + publica eventos na fila SQS
 module "lambda_pedidos" {
-  source = "../lambda-workload"
+  source = "../lambda"
 
   function_name      = "${local.prefix}-pedidos"
   handler            = local.lambda_handlers.pedidos
@@ -104,13 +116,13 @@ module "lambda_pedidos" {
   memory_size        = var.lambda_memory_mb
   timeout            = var.lambda_timeout_s
   filename           = data.archive_file.placeholder.output_path
-  subnet_ids         = module.networking.private_subnet_ids
-  security_group_ids = [module.networking.lambda_security_group_id]
+  subnet_ids         = module.vpc.private_subnet_ids
+  security_group_ids = [module.vpc.lambda_security_group_id]
   log_retention_days = var.log_retention_days
 
   environment_variables = merge(local.lambda_common_env, {
-    DYNAMODB_TABLE_PEDIDOS = module.datastore.pedidos_table_name
-    SQS_QUEUE_URL          = module.messaging.queue_url
+    DYNAMODB_TABLE_PEDIDOS = module.dynamodb.pedidos_table_name
+    SQS_QUEUE_URL          = module.sqs.queue_url
   })
 
   policy_statements = [
@@ -125,21 +137,21 @@ module "lambda_pedidos" {
         "dynamodb:TransactWriteItems",
       ]
       resources = [
-        module.datastore.pedidos_table_arn,
-        "${module.datastore.pedidos_table_arn}/index/*",
+        module.dynamodb.pedidos_table_arn,
+        "${module.dynamodb.pedidos_table_arn}/index/*",
       ]
     },
     {
       sid       = "SQSSend"
       actions   = ["sqs:SendMessage", "sqs:GetQueueUrl"]
-      resources = [module.messaging.queue_arn]
+      resources = [module.sqs.queue_arn]
     },
   ]
 }
 
 # Produtos: catálogo no DynamoDB + consumidora da fila SQS (eventos de pedidos)
 module "lambda_produtos" {
-  source = "../lambda-workload"
+  source = "../lambda"
 
   function_name      = "${local.prefix}-produtos"
   handler            = local.lambda_handlers.produtos
@@ -147,13 +159,13 @@ module "lambda_produtos" {
   memory_size        = var.lambda_memory_mb
   timeout            = var.lambda_timeout_s
   filename           = data.archive_file.placeholder.output_path
-  subnet_ids         = module.networking.private_subnet_ids
-  security_group_ids = [module.networking.lambda_security_group_id]
+  subnet_ids         = module.vpc.private_subnet_ids
+  security_group_ids = [module.vpc.lambda_security_group_id]
   log_retention_days = var.log_retention_days
 
   environment_variables = merge(local.lambda_common_env, {
-    DYNAMODB_TABLE_PRODUTOS = module.datastore.produtos_table_name
-    SQS_QUEUE_URL           = module.messaging.queue_url
+    DYNAMODB_TABLE_PRODUTOS = module.dynamodb.produtos_table_name
+    SQS_QUEUE_URL           = module.sqs.queue_url
   })
 
   policy_statements = [
@@ -168,8 +180,8 @@ module "lambda_produtos" {
         "dynamodb:BatchGetItem",
       ]
       resources = [
-        module.datastore.produtos_table_arn,
-        "${module.datastore.produtos_table_arn}/index/*",
+        module.dynamodb.produtos_table_arn,
+        "${module.dynamodb.produtos_table_arn}/index/*",
       ]
     },
     {
@@ -180,14 +192,14 @@ module "lambda_produtos" {
         "sqs:GetQueueAttributes",
         "sqs:ChangeMessageVisibility",
       ]
-      resources = [module.messaging.queue_arn]
+      resources = [module.sqs.queue_arn]
     },
   ]
 }
 
 # Pagamentos: processa transações + atualiza status do pedido + notifica via SQS
 module "lambda_pagamentos" {
-  source = "../lambda-workload"
+  source = "../lambda"
 
   function_name      = "${local.prefix}-pagamentos"
   handler            = local.lambda_handlers.pagamentos
@@ -195,20 +207,20 @@ module "lambda_pagamentos" {
   memory_size        = var.lambda_memory_mb
   timeout            = var.lambda_timeout_s
   filename           = data.archive_file.placeholder.output_path
-  subnet_ids         = module.networking.private_subnet_ids
-  security_group_ids = [module.networking.lambda_security_group_id]
+  subnet_ids         = module.vpc.private_subnet_ids
+  security_group_ids = [module.vpc.lambda_security_group_id]
   log_retention_days = var.log_retention_days
 
   environment_variables = merge(local.lambda_common_env, {
-    SQS_QUEUE_URL          = module.messaging.queue_url
-    DYNAMODB_TABLE_PEDIDOS = module.datastore.pedidos_table_name
+    SQS_QUEUE_URL          = module.sqs.queue_url
+    DYNAMODB_TABLE_PEDIDOS = module.dynamodb.pedidos_table_name
   })
 
   policy_statements = [
     {
       sid       = "SQSSend"
       actions   = ["sqs:SendMessage", "sqs:GetQueueUrl"]
-      resources = [module.messaging.queue_arn]
+      resources = [module.sqs.queue_arn]
     },
     {
       sid = "DynamoDBPedidosUpdate"
@@ -216,7 +228,7 @@ module "lambda_pagamentos" {
         "dynamodb:UpdateItem",
         "dynamodb:GetItem",
       ]
-      resources = [module.datastore.pedidos_table_arn]
+      resources = [module.dynamodb.pedidos_table_arn]
     },
   ]
 }
@@ -244,7 +256,7 @@ module "lambda_pagamentos" {
 # Com 180k eventos/mês isso reduz invocações em ~40–60%.
 # =============================================================================
 resource "aws_lambda_event_source_mapping" "sqs_to_produtos" {
-  event_source_arn = module.messaging.queue_arn
+  event_source_arn = module.sqs.queue_arn
   function_name    = module.lambda_produtos.alias_arn
   enabled          = true
 
@@ -270,8 +282,8 @@ module "api_gateway" {
 
   prefix             = local.prefix
   stage_name         = var.environment
-  cognito_client_id  = module.auth_idp.client_id
-  cognito_issuer_url = module.auth_idp.issuer_url
+  cognito_client_id  = module.cognito.client_id
+  cognito_issuer_url = module.cognito.issuer_url
   log_retention_days = var.log_retention_days
 
   lambda_integrations = {
