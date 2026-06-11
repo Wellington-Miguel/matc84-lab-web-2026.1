@@ -1,0 +1,13 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+*.tfvars.local
+override.tf
+override.tf.json
+
+# Zip placeholder gerado em tempo de execução pelo data "archive_file"
+placeholder/placeholder.zip

@@ -1,3 +1,9 @@
+# =============================================================================
+# Módulo canônico (stack) — define como toda a infraestrutura é criada.
+# Os ambientes (envs/dev, envs/prod) apenas instanciam este módulo com
+# parâmetros próprios; alterações aqui refletem em todos os ambientes.
+# =============================================================================
+
 variable "aws_region" {
   description = "Região AWS para deploy"
   type        = string
@@ -13,7 +19,6 @@ variable "project_name" {
 variable "environment" {
   description = "Ambiente de deploy (prod, staging, dev)"
   type        = string
-  default     = "prod"
 
   validation {
     condition     = contains(["prod", "staging", "dev"], var.environment)
@@ -72,52 +77,19 @@ variable "opensearch_volume_gb" {
   default     = 20
 }
 
-# --- Aurora Serverless v2 ---
-variable "aurora_min_capacity" {
-  description = "Capacidade mínima Aurora Serverless v2 (ACU)"
-  type        = number
-  default     = 0.5
-}
-
-variable "aurora_max_capacity" {
-  description = "Capacidade máxima Aurora Serverless v2 (ACU)"
-  type        = number
-  default     = 4
-}
-
-variable "aurora_engine_version" {
-  description = "Versão do engine PostgreSQL no Aurora"
-  type        = string
-  default     = "16.1"
-}
-
-variable "aurora_database_name" {
-  description = "Nome do banco de dados inicial"
-  type        = string
-  default     = "distribuicao"
-}
-
 # --- SQS ---
 variable "sqs_visibility_timeout_s" {
   description = <<-EOT
     Visibility timeout da fila SQS em segundos.
     REGRA: deve ser >= timeout da Lambda consumidora.
-    Durante esse período a mensagem fica invisível para outros consumidores.
-    Se a Lambda falhar antes de DeleteMessage, a mensagem retorna automaticamente.
-    Default: 120s (2× o timeout padrão de 30s das Lambdas — margem de segurança).
+    Default: 120s (4× o timeout padrão de 30s das Lambdas — margem de segurança).
   EOT
   type        = number
   default     = 120
 }
 
 variable "sqs_message_retention_days" {
-  description = <<-EOT
-    Retenção de mensagens na fila principal (dias).
-    Padrão AWS: 4 dias. Máximo: 14 dias.
-    Com 180k eventos/mês o custo estimado é ~US$ 0,22/mês após Free Tier
-    (540k operações: SendMessage + ReceiveMessage + DeleteMessage por evento).
-    O Free Tier cobre 1M requisições/mês — 540k/mês permanece dentro dele.
-  EOT
+  description = "Retenção de mensagens na fila principal (dias). Padrão AWS: 4. Máximo: 14."
   type        = number
   default     = 4
 
@@ -135,7 +107,7 @@ variable "sqs_max_receive_count" {
 
 # --- Logs ---
 variable "log_retention_days" {
-  description = "Retenção de logs CloudWatch (dias)"
+  description = "Retenção de logs CloudWatch (dias) — estratégia de expiração padrão: 15 dias"
   type        = number
-  default     = 30
+  default     = 15
 }

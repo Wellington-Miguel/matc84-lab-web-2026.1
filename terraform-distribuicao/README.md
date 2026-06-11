@@ -1,6 +1,8 @@
 # Terraform — Distribuidora de Bebidas
 
-Infraestrutura AWS serverless-first provisionada com Terraform.
+Infraestrutura AWS serverless-first provisionada com Terraform, organizada em
+módulos com um **módulo canônico** (`modules/stack`) instanciado por ambiente
+(`envs/dev` e `envs/prod`).
 
 ## Arquitetura
 
@@ -11,8 +13,6 @@ Actor → API Gateway (HTTP API) → Lambda auth       → OpenSearch (sessões/
                                → Lambda pagamentos → DynamoDB + SQS
 
 Cognito JWT Authorizer — todas as rotas exceto /auth/*
-Secrets Manager       — credenciais Aurora para as Lambdas
-Aurora Serverless v2  — persistência relacional (relatórios, joins)
 ```
 
 ## Recursos provisionados
@@ -29,8 +29,32 @@ Aurora Serverless v2  — persistência relacional (relatórios, joins)
 | OpenSearch | Single-node VPC | Busca de sessões/catálogo |
 | DynamoDB | 2 tabelas PAY_PER_REQUEST | pedidos + produtos |
 | SQS | Fila + DLQ | Desacoplamento async |
-| Aurora Serverless v2 | PostgreSQL 16 | Relatórios + auditoria |
-| Secrets Manager | 1 secret | Credenciais Aurora |
+
+## Estrutura de pastas
+
+```
+terraform-distribuicao/
+├── modules/
+│   ├── stack/            # MÓDULO CANÔNICO — compõe toda a infra;
+│   │                     # alterações aqui refletem em todos os ambientes
+│   ├── lambda-workload/  # Módulo canônico de Lambda (main, iam, cloudwatch, outputs)
+│   ├── networking/       # VPC, subnets, NAT, security groups
+│   ├── api-gateway/      # HTTP API + authorizer Cognito + rotas + access logs
+│   ├── auth/             # Cognito User Pool + App Client
+│   ├── datastore/        # Tabelas DynamoDB (pedidos, produtos)
+│   ├── messaging/        # SQS + DLQ + alarmes CloudWatch
+│   └── search/           # OpenSearch + slow logs
+├── envs/
+│   ├── dev/              # providers.tf, variables.tf, main.tf, outputs.tf
+│   └── prod/             # idem — instancia modules/stack com environment = "prod"
+└── placeholder/          # Bootstrap inicial das Lambdas (zip gerado em runtime)
+```
+
+Cada workload Lambda (auth, pedidos, produtos, pagamentos) é uma instância do
+módulo `lambda-workload`, que padroniza: log group CloudWatch com
+`retention_in_days = 15` (estratégia de expiração de logs), IAM role com
+política base (logs + VPC) + statements específicos por parâmetro, SnapStart,
+alias `live` e VPC config.
 
 ## Pré-requisitos
 
@@ -48,6 +72,9 @@ java -version
 ## Primeiro deploy
 
 ```bash
+# Escolha o ambiente
+cd envs/dev   # ou envs/prod
+
 # 1. Inicializar providers
 terraform init
 
@@ -61,28 +88,41 @@ terraform apply tfplan
 terraform output
 ```
 
+## CI/CD
+
+O workflow `.github/workflows/infra.yml` (raiz do repositório) executa:
+
+1. **validate** — `terraform fmt -check` + `terraform validate` para dev e prod
+   em todo PR/push que toque a infra.
+2. **infra-dev** — `plan` + `apply` automático em `envs/dev` após merge na `main`.
+3. **infra-prod** — roda somente depois do dev; usa o GitHub Environment
+   `infra-prod`, onde se configura **required reviewers** para aprovação manual.
+
+Configure em *Settings → Environments* os ambientes `infra-dev` e `infra-prod`,
+cada um com o secret `AWS_ROLE_ARN` (role IAM com trust via OIDC do GitHub).
+
 ## Deploy de código Lambda (pós-primeiro apply)
 
-O Terraform usa `lifecycle { ignore_changes = [filename] }` — o código é
-gerenciado pelo CI/CD:
+O módulo `lambda-workload` usa `lifecycle { ignore_changes = [filename] }` —
+o código é gerenciado pelo CI/CD:
 
 ```bash
 # Gerar o JAR fat/shadow com seu build tool
 ./gradlew shadowJar
 
-# Atualizar a função (substitua <modulo> por auth|pedidos|produtos|pagamentos)
+# Atualizar a função (substitua <ambiente> por dev|prod e <modulo> por auth|pedidos|produtos|pagamentos)
 aws lambda update-function-code \
-  --function-name distribuicao-bebidas-prod-<modulo> \
+  --function-name distribuicao-bebidas-<ambiente>-<modulo> \
   --zip-file fileb://build/libs/<modulo>-all.jar \
   --region us-east-1
 
 # Publicar nova versão (necessário para SnapStart)
 aws lambda publish-version \
-  --function-name distribuicao-bebidas-prod-<modulo>
+  --function-name distribuicao-bebidas-<ambiente>-<modulo>
 
 # Atualizar alias "live" para a nova versão
 aws lambda update-alias \
-  --function-name distribuicao-bebidas-prod-<modulo> \
+  --function-name distribuicao-bebidas-<ambiente>-<modulo> \
   --name live \
   --function-version <numero-da-versao>
 ```
@@ -102,7 +142,8 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST
 ```
 
-2. Descomentar o bloco `backend "s3"` em `providers.tf`
+2. Descomentar o bloco `backend "s3"` em `envs/<ambiente>/providers.tf`
+   (cada ambiente usa uma key própria: `dev/terraform.tfstate`, `prod/terraform.tfstate`)
 
 3. Migrar state local:
 ```bash
@@ -112,30 +153,6 @@ terraform init -migrate-state
 ## Destruir (cuidado em produção)
 
 ```bash
-# Aurora tem deletion_protection = true — desabilite antes:
-terraform apply -target=aws_rds_cluster.main \
-  -var="..." # ajuste as variáveis se necessário
-
+cd envs/<ambiente>
 terraform destroy
-```
-
-## Estrutura de arquivos
-
-```
-terraform-distribuicao/
-├── providers.tf      # AWS + random providers, backend S3
-├── variables.tf      # Todas as variáveis de entrada
-├── locals.tf         # Valores computados (prefixos, handlers)
-├── outputs.tf        # URLs, ARNs, IDs exportados
-├── vpc.tf            # VPC, subnets, NAT, SGs
-├── cognito.tf        # User Pool + App Client
-├── secrets.tf        # Secrets Manager (Aurora credentials)
-├── dynamodb.tf       # Tabelas pedidos + produtos
-├── sqs.tf            # Fila + DLQ + alarme CloudWatch
-├── opensearch.tf     # Domínio OpenSearch + política de acesso
-├── aurora.tf         # Cluster Serverless v2 + instância
-├── iam.tf            # Roles + policies de cada Lambda
-├── lambdas.tf        # 4 Lambdas + SnapStart + aliases + log groups
-├── api_gateway.tf    # HTTP API + Cognito authorizer + rotas
-└── placeholder.zip   # Bootstrap inicial (substituído pelo CI/CD)
 ```

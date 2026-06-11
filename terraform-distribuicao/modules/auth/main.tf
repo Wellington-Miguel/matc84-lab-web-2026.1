@@ -2,7 +2,7 @@
 # Cognito User Pool
 # =============================================================================
 resource "aws_cognito_user_pool" "main" {
-  name = "${local.prefix}-users"
+  name = "${var.prefix}-users"
 
   # Login via e-mail
   username_attributes      = ["email"]
@@ -41,14 +41,14 @@ resource "aws_cognito_user_pool" "main" {
     }
   }
 
-  tags = { Name = "${local.prefix}-cognito" }
+  tags = { Name = "${var.prefix}-cognito" }
 }
 
 # =============================================================================
 # App Client (consumido pela Lambda auth e pelo frontend)
 # =============================================================================
 resource "aws_cognito_user_pool_client" "api" {
-  name         = "${local.prefix}-api-client"
+  name         = "${var.prefix}-api-client"
   user_pool_id = aws_cognito_user_pool.main.id
 
   generate_secret = false # SPA/mobile não armazena secret

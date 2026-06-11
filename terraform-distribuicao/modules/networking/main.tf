@@ -5,7 +5,7 @@ resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
-  tags                 = { Name = "${local.prefix}-vpc" }
+  tags                 = { Name = "${var.prefix}-vpc" }
 }
 
 # =============================================================================
@@ -15,17 +15,17 @@ resource "aws_subnet" "private" {
   count             = length(var.private_subnet_cidrs)
   vpc_id            = aws_vpc.main.id
   cidr_block        = var.private_subnet_cidrs[count.index]
-  availability_zone = local.azs[count.index]
-  tags              = { Name = "${local.prefix}-private-${count.index + 1}" }
+  availability_zone = var.azs[count.index]
+  tags              = { Name = "${var.prefix}-private-${count.index + 1}" }
 }
 
 resource "aws_subnet" "public" {
   count                   = length(var.public_subnet_cidrs)
   vpc_id                  = aws_vpc.main.id
   cidr_block              = var.public_subnet_cidrs[count.index]
-  availability_zone       = local.azs[count.index]
+  availability_zone       = var.azs[count.index]
   map_public_ip_on_launch = true
-  tags                    = { Name = "${local.prefix}-public-${count.index + 1}" }
+  tags                    = { Name = "${var.prefix}-public-${count.index + 1}" }
 }
 
 # =============================================================================
@@ -33,20 +33,20 @@ resource "aws_subnet" "public" {
 # =============================================================================
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "${local.prefix}-igw" }
+  tags   = { Name = "${var.prefix}-igw" }
 }
 
 resource "aws_eip" "nat" {
   domain     = "vpc"
   depends_on = [aws_internet_gateway.main]
-  tags       = { Name = "${local.prefix}-nat-eip" }
+  tags       = { Name = "${var.prefix}-nat-eip" }
 }
 
 resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
   depends_on    = [aws_internet_gateway.main]
-  tags          = { Name = "${local.prefix}-nat" }
+  tags          = { Name = "${var.prefix}-nat" }
 }
 
 # =============================================================================
@@ -58,7 +58,7 @@ resource "aws_route_table" "public" {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.main.id
   }
-  tags = { Name = "${local.prefix}-public-rt" }
+  tags = { Name = "${var.prefix}-public-rt" }
 }
 
 resource "aws_route_table" "private" {
@@ -67,7 +67,7 @@ resource "aws_route_table" "private" {
     cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.main.id
   }
-  tags = { Name = "${local.prefix}-private-rt" }
+  tags = { Name = "${var.prefix}-private-rt" }
 }
 
 resource "aws_route_table_association" "public" {
@@ -88,7 +88,7 @@ resource "aws_route_table_association" "private" {
 
 # Lambda: egress irrestrito para alcançar endpoints AWS via NAT
 resource "aws_security_group" "lambda" {
-  name        = "${local.prefix}-lambda-sg"
+  name        = "${var.prefix}-lambda-sg"
   description = "Lambda functions — permite saída total"
   vpc_id      = aws_vpc.main.id
 
@@ -99,12 +99,12 @@ resource "aws_security_group" "lambda" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = { Name = "${local.prefix}-lambda-sg" }
+  tags = { Name = "${var.prefix}-lambda-sg" }
 }
 
 # OpenSearch: acesso exclusivo das Lambdas na porta 443
 resource "aws_security_group" "opensearch" {
-  name        = "${local.prefix}-opensearch-sg"
+  name        = "${var.prefix}-opensearch-sg"
   description = "OpenSearch — acesso apenas das Lambdas"
   vpc_id      = aws_vpc.main.id
 
@@ -115,21 +115,5 @@ resource "aws_security_group" "opensearch" {
     security_groups = [aws_security_group.lambda.id]
   }
 
-  tags = { Name = "${local.prefix}-opensearch-sg" }
-}
-
-# Aurora: acesso exclusivo das Lambdas na porta 5432
-resource "aws_security_group" "aurora" {
-  name        = "${local.prefix}-aurora-sg"
-  description = "Aurora Serverless — acesso apenas das Lambdas"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.lambda.id]
-  }
-
-  tags = { Name = "${local.prefix}-aurora-sg" }
+  tags = { Name = "${var.prefix}-opensearch-sg" }
 }

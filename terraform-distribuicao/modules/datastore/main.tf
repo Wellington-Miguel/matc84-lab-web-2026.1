@@ -1,10 +1,9 @@
 # =============================================================================
 # Tabela: pedidos
 # PK: pedidoId (UUID), SK: clienteId — permite query por cliente
-# DynamoDB Streams habilitado para eventual sincronização com Aurora
 # =============================================================================
 resource "aws_dynamodb_table" "pedidos" {
-  name         = "${local.prefix}-pedidos"
+  name         = "${var.prefix}-pedidos"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "pedidoId"
   range_key    = "clienteId"
@@ -42,10 +41,6 @@ resource "aws_dynamodb_table" "pedidos" {
     projection_type = "ALL"
   }
 
-  # Stream para Lambda de sincronização com Aurora
-  stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"
-
   # TTL para limpeza automática de pedidos cancelados expirados
   ttl {
     attribute_name = "expiresAt"
@@ -60,7 +55,7 @@ resource "aws_dynamodb_table" "pedidos" {
     enabled = true
   }
 
-  tags = { Name = "${local.prefix}-pedidos" }
+  tags = { Name = "${var.prefix}-pedidos" }
 }
 
 # =============================================================================
@@ -68,7 +63,7 @@ resource "aws_dynamodb_table" "pedidos" {
 # Catálogo de produtos da distribuidora
 # =============================================================================
 resource "aws_dynamodb_table" "produtos" {
-  name         = "${local.prefix}-produtos"
+  name         = "${var.prefix}-produtos"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "produtoId"
 
@@ -110,5 +105,5 @@ resource "aws_dynamodb_table" "produtos" {
     enabled = true
   }
 
-  tags = { Name = "${local.prefix}-produtos" }
+  tags = { Name = "${var.prefix}-produtos" }
 }
