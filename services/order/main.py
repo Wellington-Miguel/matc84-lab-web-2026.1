@@ -19,6 +19,7 @@ import redis.asyncio as aioredis
 import boto3
 from fastapi import FastAPI, Request, Response, Header, HTTPException, status
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, field_validator
 from typing import Optional
 
@@ -31,6 +32,32 @@ from shared.idempotency import IdempotencyGuard
 from shared.retry import with_retry, RetryConfig
 
 logger = get_logger("order-service")
+
+HTTP_REQUESTS_TOTAL = Counter(
+    "http_requests_total",
+    "Total de requisicoes HTTP recebidas pelo servico.",
+    ["method", "path", "status"],
+)
+HTTP_REQUEST_DURATION_SECONDS = Histogram(
+    "http_request_duration_seconds",
+    "Duracao das requisicoes HTTP em segundos.",
+    ["method", "path"],
+)
+ORDER_CREATION_TOTAL = Counter(
+    "order_creation_total",
+    "Total de tentativas de criacao de pedido por resultado.",
+    ["result"],
+)
+STOCK_CHECK_TOTAL = Counter(
+    "stock_check_total",
+    "Total de verificacoes de estoque por resultado.",
+    ["result"],
+)
+SQS_PUBLISH_TOTAL = Counter(
+    "sqs_publish_total",
+    "Total de publicacoes de pedidos no SQS por resultado.",
+    ["result"],
+)
 
 # ── Configurações (via variáveis de ambiente) ─────────────────────────────────
 DB_URL       = os.getenv("DATABASE_URL", "postgresql://bebidasadmin:senha@localhost/bebidas")
@@ -71,11 +98,27 @@ app = FastAPI(title="Order Service", lifespan=lifespan)
 async def correlation_middleware(request: Request, call_next):
     correlation_id = request.headers.get("x-correlation-id") or str(uuid.uuid4())
     request_id = str(uuid.uuid4())
+    timer = Timer()
+    status_code = 500
 
     with LogContext(correlation_id=correlation_id, request_id=request_id):
-        response = await call_next(request)
-        response.headers["x-correlation-id"] = correlation_id
-        return response
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            response.headers["x-correlation-id"] = correlation_id
+            return response
+        finally:
+            path = _route_template(request)
+            if path != "/metrics":
+                HTTP_REQUESTS_TOTAL.labels(
+                    method=request.method,
+                    path=path,
+                    status=str(status_code),
+                ).inc()
+                HTTP_REQUEST_DURATION_SECONDS.labels(
+                    method=request.method,
+                    path=path,
+                ).observe(timer.elapsed_ms / 1000)
 
 
 # ── Models ────────────────────────────────────────────────────────────────────
@@ -126,6 +169,12 @@ async def health():
     )
 
 
+@app.get("/metrics")
+async def metrics():
+    """Endpoint de scrape do Prometheus."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.post("/orders", status_code=status.HTTP_201_CREATED)
 async def create_order(
     payload: CreateOrderRequest,
@@ -143,6 +192,7 @@ async def create_order(
     for item in payload.items:
         available = await _check_stock(item.sku_id, item.quantity)
         if not available:
+            ORDER_CREATION_TOTAL.labels(result="stock_insufficient").inc()
             logger.warning("order.stock_insufficient", sku_id=item.sku_id, quantity=item.quantity)
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -164,6 +214,7 @@ async def create_order(
             execution_ms=timer.elapsed_ms,
             status="error",
         )
+        ORDER_CREATION_TOTAL.labels(result="error").inc()
         raise HTTPException(status_code=500, detail="Erro interno ao criar pedido")
 
     # 3. Publicar no SQS (assíncrono — não bloqueia resposta)
@@ -177,6 +228,7 @@ async def create_order(
         execution_ms=timer.elapsed_ms,
         status="success",
     )
+    ORDER_CREATION_TOTAL.labels(result="success").inc()
 
     return order
 
@@ -196,6 +248,14 @@ async def get_order(order_id: str):
 
 # ── Funções internas ──────────────────────────────────────────────────────────
 
+def _route_template(request: Request) -> str:
+    """Retorna o template da rota para evitar cardinalidade alta nas metricas."""
+    route = request.scope.get("route")
+    if route is not None and getattr(route, "path", None):
+        return route.path
+    return request.url.path
+
+
 async def _check_stock(sku_id: str, quantity: int) -> bool:
     """
     Verifica estoque no Redis (Data Grid do SBA).
@@ -206,13 +266,19 @@ async def _check_stock(sku_id: str, quantity: int) -> bool:
         # Cache miss: busca do banco e repopula Redis
         row = await db_pool.fetchrow("SELECT quantity FROM inventory WHERE sku_id = $1", sku_id)
         if not row:
+            STOCK_CHECK_TOTAL.labels(result="not_found").inc()
             return False
         stock = row["quantity"]
         await redis_client.setex(f"stock:{sku_id}", 30, str(stock))
     else:
         stock = int(raw)
 
-    return stock >= quantity
+    if stock >= quantity:
+        STOCK_CHECK_TOTAL.labels(result="available").inc()
+        return True
+
+    STOCK_CHECK_TOTAL.labels(result="insufficient").inc()
+    return False
 
 
 async def _persist_order(payload: CreateOrderRequest) -> dict:
@@ -254,6 +320,7 @@ async def _publish_to_sqs(order: dict):
     Usa retry com backoff para garantir entrega.
     """
     if not SQS_QUEUE:
+        SQS_PUBLISH_TOTAL.labels(result="skipped").inc()
         return
 
     message = {
@@ -277,7 +344,9 @@ async def _publish_to_sqs(order: dict):
 
     try:
         await with_retry(send, config=RetryConfig(max_attempts=3, base_delay=1.0))
+        SQS_PUBLISH_TOTAL.labels(result="success").inc()
         logger.info("order.sqs_published", order_id=order["id"])
     except Exception as err:
         # Falha no SQS não cancela o pedido — o dado já foi salvo no banco
+        SQS_PUBLISH_TOTAL.labels(result="error").inc()
         logger.error("order.sqs_publish_failed", order_id=order["id"], error=str(err))
