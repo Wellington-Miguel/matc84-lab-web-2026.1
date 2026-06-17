@@ -178,8 +178,10 @@ resource "aws_db_instance" "postgres" {
 # --- DynamoDB ---
 
 resource "aws_dynamodb_table" "main_table" {
-  name           = "app-data"
-  billing_mode   = "PAY_PER_REQUEST" # On-Demand para evitar custos fixos
+  name           = "sales-idempotency"
+  billing_mode   = "PROVISIONED"
+  read_capacity  = 5
+  write_capacity = 5
   hash_key       = "id"
 
   attribute {
