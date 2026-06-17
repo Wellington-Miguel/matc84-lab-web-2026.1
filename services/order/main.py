@@ -137,13 +137,24 @@ async def create_order(
     Header obrigatório: Idempotency-Key (UUID gerado pelo cliente)
     """
     timer = Timer()
-    key = idempotency_key or str(uuid.uuid4())
+    # key = idempotency_key or str(uuid.uuid4())
+    if not idempotency_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Header idempotency-key é obrigatório"
+        )
+    key = IdempotencyGuard.validate_key(idempotency_key)
 
     # 1. Verificar estoque no Redis (OCC)
     for item in payload.items:
         available = await _check_stock(item.sku_id, item.quantity)
         if not available:
-            logger.warning("order.stock_insufficient", sku_id=item.sku_id, quantity=item.quantity)
+            logger.warning("order.stock_insufficient",
+                            extra={
+                                "sku_id": item.sku_id,
+                                "quantity": item.quantity,
+                            },
+                        )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Estoque insuficiente para SKU {item.sku_id}"
@@ -155,28 +166,34 @@ async def create_order(
     try:
         order = await guard.execute(
             key=key,
-            operation=lambda: _persist_order(payload),
+            operation=lambda conn: _persist_order(
+                conn,
+                payload,
+            ),
         )
     except Exception as err:
-        logger.error(
-            "order.create_failed",
-            error_type=type(err).__name__,
-            execution_ms=timer.elapsed_ms,
-            status="error",
-        )
+        logger.error("order.create_failed",
+                    extra={
+                        "error_type": type(err).__name__,
+                        "execution_ms": timer.elapsed_ms,
+                        "status": "error",
+                    },
+                )
         raise HTTPException(status_code=500, detail="Erro interno ao criar pedido")
 
     # 3. Publicar no SQS (assíncrono — não bloqueia resposta)
     asyncio.create_task(_publish_to_sqs(order))
 
     logger.info(
-        "order.created",
-        order_id=order["id"],
-        customer_id=payload.customer_id,
-        total=payload.total,
-        execution_ms=timer.elapsed_ms,
-        status="success",
-    )
+    "order.created",
+    extra={
+        "order_id": order["id"],
+        "customer_id": payload.customer_id,
+        "total": payload.total,
+        "execution_ms": timer.elapsed_ms,
+        "status": "success",
+    },
+)
 
     return order
 
@@ -215,29 +232,46 @@ async def _check_stock(sku_id: str, quantity: int) -> bool:
     return stock >= quantity
 
 
-async def _persist_order(payload: CreateOrderRequest) -> dict:
-    """Persiste pedido no banco dentro de uma transação."""
-    async with db_pool.acquire() as conn:
-        async with conn.transaction():
-            order_id = str(uuid.uuid4())
-            now = datetime.now(timezone.utc)
+# apenas usar a conexão recebida:
+async def _persist_order(
+    conn: asyncpg.Connection,
+    payload: CreateOrderRequest,
+) -> dict:
+    """
+    Persiste o pedido usando uma conexão já aberta
+    pelo IdempotencyGuard.
+    """
 
-            await conn.execute(
-                """
-                INSERT INTO orders (id, customer_id, total, status, created_at)
-                VALUES ($1, $2, $3, 'pending', $4)
-                """,
-                order_id, payload.customer_id, payload.total, now,
-            )
+    order_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
 
-            for item in payload.items:
-                await conn.execute(
-                    """
-                    INSERT INTO order_items (order_id, sku_id, quantity, unit_price)
-                    VALUES ($1, $2, $3, $4)
-                    """,
-                    order_id, item.sku_id, item.quantity, item.unit_price,
-                )
+    await conn.execute(
+        """
+        INSERT INTO orders
+            (id, customer_id, total, status, created_at)
+        VALUES
+            ($1, $2, $3, 'pending', $4)
+        """,
+        order_id,
+        payload.customer_id,
+        payload.total,
+        now,
+    )
+
+    for item in payload.items:
+
+        await conn.execute(
+            """
+            INSERT INTO order_items
+                (order_id, sku_id, quantity, unit_price)
+            VALUES
+                ($1, $2, $3, $4)
+            """,
+            order_id,
+            item.sku_id,
+            item.quantity,
+            item.unit_price,
+        )
 
     return {
         "id": order_id,
@@ -277,7 +311,7 @@ async def _publish_to_sqs(order: dict):
 
     try:
         await with_retry(send, config=RetryConfig(max_attempts=3, base_delay=1.0))
-        logger.info("order.sqs_published", order_id=order["id"])
+        logger.info("order.sqs_published",extra={"order_id": order["id"]})
     except Exception as err:
         # Falha no SQS não cancela o pedido — o dado já foi salvo no banco
-        logger.error("order.sqs_publish_failed", order_id=order["id"], error=str(err))
+        logger.error("order.sqs_publish_failed",extra={"order_id": order["id"],"error": str(err)})

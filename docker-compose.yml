@@ -2,7 +2,6 @@
 # Ambiente local de desenvolvimento — simula AWS localmente
 # Uso: docker compose up -d
 
-version: "3.9"
 
 services:
 
