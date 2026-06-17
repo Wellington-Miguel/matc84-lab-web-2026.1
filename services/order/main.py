@@ -91,6 +91,13 @@ class OrderItem(BaseModel):
             raise ValueError("Quantidade deve ser positiva")
         return v
 
+    @field_validator("unit_price")
+    @classmethod
+    def price_positive(cls, v):
+        if v <= 0:
+            raise ValueError("Unit price deve ser positivo")
+        return v
+
 
 class CreateOrderRequest(BaseModel):
     customer_id: str
