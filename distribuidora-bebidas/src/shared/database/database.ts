@@ -1,9 +1,6 @@
 import { Pool } from 'pg';
 
-/**
- * Database connection manager using the Singleton pattern.
- * Ensures a single connection pool is reused throughout the application.
- */
+
 class Database {
   private static instance: Database;
   private pool: Pool;

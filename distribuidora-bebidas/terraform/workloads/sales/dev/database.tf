@@ -1,5 +1,12 @@
 variable "vpc_id" { type = string }
 variable "private_subnet_ids" { type = list(string) }
+
+# Sensible defaults or injected via .tfvars (ignored by git)
+variable "db_password" {
+  type      = string
+  sensitive = true
+}
+
 resource "aws_security_group" "rds_sg" {
   name        = "sales-dev-rds-sg"
   description = "Allow PostgreSQL traffic from EC2 for Sales Dev"
@@ -36,7 +43,7 @@ resource "aws_db_instance" "postgres" {
   instance_class         = "db.t2.micro"
   db_name                = "salesdb"
   username               = "adminuser"
-  password               = "mudar123"
+  password               = var.db_password
   db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   skip_final_snapshot    = true
