@@ -1,22 +1,17 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { Pool } from 'pg';
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
+import { database } from '../../../shared/database/database';
 
 /**
  * Controller for handling sale operations with strict idempotency and optimistic locking.
  */
 
-// PostgreSQL connection pool (configured via environment variables)
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/distribuidora',
-});
-
 // DynamoDB client for ultra-fast idempotency checks
 const dynamoClient = new DynamoDBClient({
-  region: process.env.AWS_REGION || 'sa-east-1',
+  region: process.env.AWS_REGION,
 });
 
-const DYNAMO_TABLE = process.env.DYNAMO_TABLE_NAME || 'sales-idempotency';
+const DYNAMO_TABLE = process.env.DYNAMO_TABLE_NAME;
 
 interface SaleRequest {
   productId: string;
@@ -24,6 +19,7 @@ interface SaleRequest {
 }
 
 export class SalesController {
+  private pool = database.getPool();
   /**
    * POST /v1/sales
    * Main entry point for the sale creation route.
@@ -85,7 +81,7 @@ export class SalesController {
     }
 
     const { productId, version } = request.body as SaleRequest;
-    const pgClient = await pool.connect();
+    const pgClient = await this.pool.connect();
 
     try {
       // 3. Open local ACID transaction in PostgreSQL
@@ -163,7 +159,7 @@ export class SalesController {
           await pgClient.query('ROLLBACK');
 
           // Recover the original payload from the previous attempt
-          const recoveryRes = await pool.query(
+          const recoveryRes = await this.pool.query(
             'SELECT status, payload FROM idempotency_outbox WHERE id = $1',
             [idempotencyKey]
           );
