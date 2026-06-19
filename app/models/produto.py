@@ -1,8 +1,7 @@
-from datetime import datetime
-
 from sqlalchemy import Column, Integer, String, Float, DateTime, Index
 from sqlalchemy.orm import relationship
 
+from app.core.clock import utcnow
 from app.core.database import Base
 
 
@@ -27,8 +26,8 @@ class Produto(Base):
     estoque_disponivel = Column(Integer, nullable=False, default=0)
 
     # Timestamps
-    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    criado_em = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    atualizado_em = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     # Relationships
     itens_pedido = relationship("ItemPedido", back_populates="produto", cascade="all, delete-orphan")

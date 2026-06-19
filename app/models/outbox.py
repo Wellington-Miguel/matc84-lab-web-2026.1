@@ -1,9 +1,9 @@
-from datetime import datetime
 import json
 from enum import Enum
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, Index, Enum as SQLEnum
+from sqlalchemy import Column, Integer, DateTime, Text, Boolean, Index, Enum as SQLEnum
 
+from app.core.clock import utcnow
 from app.core.database import Base
 
 
@@ -43,7 +43,7 @@ class OutboxEvent(Base):
     erro_mensagem = Column(Text, nullable=True)
 
     # Timestamps
-    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    criado_em = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     # Indexes for performance
     __table_args__ = (
@@ -63,7 +63,7 @@ class OutboxEvent(Base):
     def registrar_tentativa_falha(self, erro: str):
         """Register a failed processing attempt"""
         self.tentativas += 1
-        self.ultima_tentativa_em = datetime.utcnow()
+        self.ultima_tentativa_em = utcnow()
         self.erro_mensagem = erro
 
     def obter_dados(self) -> dict:

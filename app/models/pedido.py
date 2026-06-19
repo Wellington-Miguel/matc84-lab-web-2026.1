@@ -1,9 +1,9 @@
-from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Index, Enum as SQLEnum
+from sqlalchemy import Column, Integer, Float, DateTime, Index, Enum as SQLEnum
 from sqlalchemy.orm import relationship
 
+from app.core.clock import utcnow
 from app.core.database import Base
 
 
@@ -32,9 +32,9 @@ class Pedido(Base):
     total = Column(Float, nullable=False, default=0.0)
 
     # Timestamps
-    data_pedido = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
-    atualizado_em = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    data_pedido = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    criado_em = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    atualizado_em = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     # Relationships
     itens = relationship("ItemPedido", back_populates="pedido", cascade="all, delete-orphan")

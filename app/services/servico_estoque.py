@@ -1,9 +1,8 @@
 """Inventory management service"""
 
 import json
-from typing import Optional
+
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 
 from app.models.produto import Produto
 from app.models.outbox import OutboxEvent, TipoEvento
@@ -79,11 +78,8 @@ def reservar_estoque(
             f"Disponível: {produto.estoque_disponivel}, Solicitado: {quantidade}"
         )
 
-    # Reserve the stock
     produto.estoque_disponivel -= quantidade
-    db.flush()
 
-    # Create outbox event to track the reservation
     evento = OutboxEvent(
         tipo_evento=TipoEvento.ESTOQUE_RESERVADO,
         agregado_id=pedido_id,
@@ -94,6 +90,7 @@ def reservar_estoque(
         }),
     )
     db.add(evento)
+    db.flush()
 
     return True
 
@@ -127,11 +124,8 @@ def liberar_estoque(
     if not produto:
         raise ProdutoNaoEncontradoError(f"Produto {produto_id} não encontrado")
 
-    # Release the stock
     produto.estoque_disponivel += quantidade
-    db.flush()
 
-    # Create outbox event to track the release
     evento = OutboxEvent(
         tipo_evento=TipoEvento.ESTOQUE_LIBERADO,
         agregado_id=pedido_id,
@@ -142,6 +136,7 @@ def liberar_estoque(
         }),
     )
     db.add(evento)
+    db.flush()
 
     return True
 
@@ -169,14 +164,11 @@ def validar_disponibilidade(
         produto_id = item["produto_id"]
         quantidade = item["quantidade"]
 
-        try:
-            disponivel = obter_estoque_disponivel(db, produto_id)
-            if disponivel < quantidade:
-                raise EstoqueIndisponivelError(
-                    f"Estoque insuficiente para produto {produto_id}. "
-                    f"Disponível: {disponivel}, Solicitado: {quantidade}"
-                )
-        except ProdutoNaoEncontradoError:
-            raise
+        disponivel = obter_estoque_disponivel(db, produto_id)
+        if disponivel < quantidade:
+            raise EstoqueIndisponivelError(
+                f"Estoque insuficiente para produto {produto_id}. "
+                f"Disponível: {disponivel}, Solicitado: {quantidade}"
+            )
 
     return True

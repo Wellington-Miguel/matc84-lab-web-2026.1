@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProdutoBase(BaseModel):
@@ -12,21 +12,10 @@ class ProdutoBase(BaseModel):
     preco_unitario: float = Field(..., gt=0)
     estoque_disponivel: int = Field(default=0, ge=0)
 
-    @field_validator('preco_unitario')
+    @field_validator("preco_unitario")
     @classmethod
-    def validate_price(cls, v: float) -> float:
-        """Ensure price is positive and has max 2 decimal places"""
-        if v <= 0:
-            raise ValueError("Price must be greater than 0")
+    def arredondar_preco(cls, v: float) -> float:
         return round(v, 2)
-
-    @field_validator('estoque_disponivel')
-    @classmethod
-    def validate_stock(cls, v: int) -> int:
-        """Ensure stock is non-negative"""
-        if v < 0:
-            raise ValueError("Stock cannot be negative")
-        return v
 
 
 class ProdutoCreate(ProdutoBase):
@@ -45,12 +34,11 @@ class ProdutoUpdate(BaseModel):
 
 class ProdutoRead(ProdutoBase):
     """Schema for reading product data"""
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     criado_em: datetime
     atualizado_em: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class ProdutoListResponse(BaseModel):

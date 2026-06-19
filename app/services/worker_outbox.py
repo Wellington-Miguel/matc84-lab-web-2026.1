@@ -1,19 +1,17 @@
 """Background worker for processing transactional outbox events"""
 
 import asyncio
-import json
 import logging
-from typing import Optional
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
 from app.core.database import SessionLocal
-from app.models.outbox import OutboxEvent, TipoEvento
-from app.models.item_pedido import ItemPedido
-from app.models.pedido import Pedido, StatusPedido
+from app.models.outbox import OutboxEvent
 
 logger = logging.getLogger(__name__)
+
+MAX_TENTATIVAS = 3
+TAMANHO_LOTE = 100
 
 
 class OutboxWorkerError(Exception):
@@ -21,142 +19,77 @@ class OutboxWorkerError(Exception):
     pass
 
 
-async def processar_evento(db: Session, evento: OutboxEvent) -> bool:
+def processar_evento(db: Session, evento: OutboxEvent) -> bool:
     """
-    Process a single outbox event.
+    Process a single outbox event and persist its new state.
 
-    Args:
-        db: Database session
-        evento: The outbox event to process
-
-    Returns:
-        True if processing succeeded
-
-    Raises:
-        OutboxWorkerError: If processing fails
+    Returns True if processing succeeded, False otherwise.
     """
     try:
-        if evento.tipo_evento == TipoEvento.PEDIDO_CRIADO:
-            # Order creation is already handled in the order service
-            # Just mark it as processed
-            evento.marcar_como_processado()
-
-        elif evento.tipo_evento == TipoEvento.ESTOQUE_RESERVADO:
-            # Stock reservation is already handled in the order service
-            # Just mark it as processed
-            evento.marcar_como_processado()
-
-        elif evento.tipo_evento == TipoEvento.ESTOQUE_LIBERADO:
-            # Stock release is already handled
-            # Just mark it as processed
-            evento.marcar_como_processado()
-
-        else:
-            logger.warning(f"Unknown event type: {evento.tipo_evento}")
-            evento.marcar_como_processado()
-
+        evento.marcar_como_processado()
         db.commit()
         return True
-
-    except Exception as e:
-        error_msg = f"Failed to process event {evento.id}: {str(e)}"
-        logger.error(error_msg, exc_info=True)
-        evento.registrar_tentativa_falha(error_msg)
+    except Exception as exc:
+        mensagem = f"Failed to process event {evento.id}: {exc}"
+        logger.error(mensagem, exc_info=True)
+        evento.registrar_tentativa_falha(mensagem)
         db.commit()
         return False
 
 
-async def processar_eventos_com_backoff(
-    db: Session,
-    max_tentativas: int = 3,
-) -> int:
+def processar_eventos_pendentes(db: Session, max_tentativas: int = MAX_TENTATIVAS) -> int:
     """
-    Process unprocessed outbox events with exponential backoff.
+    Process pending outbox events in FIFO order.
 
-    Args:
-        db: Database session
-        max_tentativas: Maximum attempts before giving up on an event
-
-    Returns:
-        Number of events processed successfully
+    Returns the number of events processed successfully.
     """
-    # Fetch unprocessed events ordered by creation time (FIFO)
-    eventos = db.query(OutboxEvent).filter(
-        and_(
-            OutboxEvent.processado == False,
+    eventos = (
+        db.query(OutboxEvent)
+        .filter(
+            OutboxEvent.processado.is_(False),
             OutboxEvent.tentativas < max_tentativas,
         )
-    ).order_by(OutboxEvent.criado_em).limit(100).all()  # Process max 100 at a time
+        .order_by(OutboxEvent.criado_em)
+        .limit(TAMANHO_LOTE)
+        .all()
+    )
 
-    processados = 0
-    for evento in eventos:
-        try:
-            if await processar_evento(db, evento):
-                processados += 1
-            else:
-                logger.warning(f"Failed to process event {evento.id}, will retry later")
-        except Exception as e:
-            logger.error(f"Error processing event {evento.id}: {str(e)}", exc_info=True)
-
-    return processados
+    return sum(1 for evento in eventos if processar_evento(db, evento))
 
 
-async def worker_outbox(intervalo: int = 5):
-    """
-    Background worker task that processes outbox events periodically.
-
-    This worker:
-    1. Polls the outbox table every `intervalo` seconds
-    2. Processes unprocessed events
-    3. Uses exponential backoff for failed events
-    4. Ensures events are processed exactly once (FIFO order)
-
-    Args:
-        intervalo: Time in seconds between processing cycles (default: 5)
-    """
-    logger.info(f"Outbox worker started with {intervalo}s interval")
+async def executar_worker_outbox(intervalo: int) -> None:
+    """Poll the outbox table every `intervalo` seconds and process events."""
+    logger.info("Outbox worker started with %ss interval", intervalo)
 
     while True:
         try:
             db = SessionLocal()
             try:
-                processados = await processar_eventos_com_backoff(db)
-                if processados > 0:
-                    logger.debug(f"Processed {processados} outbox events")
+                processados = processar_eventos_pendentes(db)
+                if processados:
+                    logger.debug("Processed %s outbox events", processados)
             finally:
                 db.close()
+        except Exception as exc:
+            logger.error("Error in outbox worker: %s", exc, exc_info=True)
 
-        except Exception as e:
-            logger.error(f"Error in outbox worker: {str(e)}", exc_info=True)
-
-        # Wait before next iteration
         await asyncio.sleep(intervalo)
 
 
-def criar_tarefa_worker_outbox(app, intervalo: int = 5):
-    """
-    Create and register the outbox worker as a FastAPI background task.
+def iniciar_worker_outbox(intervalo: int) -> asyncio.Task:
+    """Start the outbox worker as an asyncio background task."""
+    task = asyncio.create_task(executar_worker_outbox(intervalo))
+    logger.info("Outbox worker task created")
+    return task
 
-    Args:
-        app: FastAPI application instance
-        intervalo: Time in seconds between processing cycles
 
-    Returns:
-        The background task
-    """
-    async def startup_outbox_worker():
-        """Create the outbox worker task on application startup"""
-        app.outbox_worker_task = asyncio.create_task(worker_outbox(intervalo))
-        logger.info("Outbox worker task created")
+async def parar_worker_outbox(task: asyncio.Task) -> None:
+    """Cancel the outbox worker background task."""
+    if task.done():
+        return
 
-    async def shutdown_outbox_worker():
-        """Cancel the outbox worker task on application shutdown"""
-        if hasattr(app, "outbox_worker_task") and not app.outbox_worker_task.done():
-            app.outbox_worker_task.cancel()
-            try:
-                await app.outbox_worker_task
-            except asyncio.CancelledError:
-                logger.info("Outbox worker task cancelled")
-
-    app.add_event_handler("startup", startup_outbox_worker)
-    app.add_event_handler("shutdown", shutdown_outbox_worker)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        logger.info("Outbox worker task cancelled")

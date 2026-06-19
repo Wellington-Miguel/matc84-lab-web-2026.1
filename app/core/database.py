@@ -2,13 +2,13 @@ from typing import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.pool import QueuePool
 
 from app.core.config import settings
 
-# Create database engine
 engine = create_engine(
     settings.DATABASE_URL,
-    poolclass=__import__('sqlalchemy.pool', fromlist=['QueuePool']).QueuePool,
+    poolclass=QueuePool,
     pool_size=settings.DB_POOL_SIZE,
     max_overflow=settings.DB_MAX_OVERFLOW,
     pool_timeout=settings.DB_POOL_TIMEOUT,
@@ -16,19 +16,13 @@ engine = create_engine(
     echo=settings.DEBUG,
 )
 
-# Create session factory
-SessionLocal = sessionmaker(
-    autocommit=False,
-    autoflush=False,
-    bind=engine,
-)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for all models
 Base = declarative_base()
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Dependency injection for database session in FastAPI routes"""
+    """Provide a database session for FastAPI dependency injection."""
     db = SessionLocal()
     try:
         yield db
@@ -36,11 +30,11 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-async def init_db():
-    """Initialize database (create all tables)"""
+async def init_db() -> None:
+    """Create all database tables."""
     Base.metadata.create_all(bind=engine)
 
 
-async def close_db():
-    """Close database connections"""
+async def close_db() -> None:
+    """Dispose of the database engine connection pool."""
     engine.dispose()

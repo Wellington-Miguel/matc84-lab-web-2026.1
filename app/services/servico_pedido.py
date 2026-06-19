@@ -2,19 +2,20 @@
 
 import json
 from typing import Optional
+
 from sqlalchemy.orm import Session
 
 from app.models.pedido import Pedido, StatusPedido
+from app.models.produto import Produto
 from app.models.item_pedido import ItemPedido
 from app.models.outbox import OutboxEvent, TipoEvento
 from app.core.idempotency import (
     get_cached_response,
     store_idempotency_result,
-    generate_idempotency_key,
+    normalize_idempotency_key,
 )
 from app.services.servico_estoque import (
     reservar_estoque,
-    liberar_estoque,
     validar_disponibilidade,
     EstoqueIndisponivelError,
     ProdutoNaoEncontradoError,
@@ -59,14 +60,13 @@ def criar_pedido(
     if cliente_id <= 0:
         raise ValueError("cliente_id must be positive")
 
-    # Handle idempotency
+    normalized_key: Optional[str] = None
     if idempotency_key:
         try:
-            normalized_key = generate_idempotency_key(idempotency_key)
+            normalized_key = normalize_idempotency_key(idempotency_key)
         except ValueError as e:
             raise ValueError(f"Invalid idempotency key: {str(e)}")
 
-        # Check for cached response
         cached = get_cached_response(db, normalized_key)
         if cached:
             return cached
@@ -89,20 +89,15 @@ def criar_pedido(
             produto_id = item_data["produto_id"]
             quantidade = item_data["quantidade"]
 
-            # Reserve stock (this will raise if not available)
             reservar_estoque(db, produto_id, quantidade, pedido.id)
 
-            # Get product to calculate total
-            from app.models.produto import Produto
             produto = db.query(Produto).filter(Produto.id == produto_id).first()
             if not produto:
                 raise ProdutoNaoEncontradoError(f"Produto {produto_id} não encontrado")
 
             preco_unitario = produto.preco_unitario
-            subtotal = quantidade * preco_unitario
-            total += subtotal
+            total += quantidade * preco_unitario
 
-            # Create order item
             item_pedido = ItemPedido(
                 pedido_id=pedido.id,
                 produto_id=produto_id,
@@ -141,16 +136,12 @@ def criar_pedido(
             "data_pedido": pedido.data_pedido.isoformat(),
         }
 
-        # Cache idempotent response
-        if idempotency_key:
+        if normalized_key:
             store_idempotency_result(db, normalized_key, response)
 
         return response
 
-    except (EstoqueIndisponivelError, ProdutoNaoEncontradoError) as e:
-        db.rollback()
-        raise
-    except Exception as e:
+    except Exception:
         db.rollback()
         raise
 

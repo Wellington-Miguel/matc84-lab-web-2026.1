@@ -1,7 +1,7 @@
 [project]
 name = "matc84-lab-web-2026-1"
 version = "0.1.0"
-description = "Add your description here"
+description = "High-availability beverage distributor system (modular monolith)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

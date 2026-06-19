@@ -1,8 +1,6 @@
-from datetime import datetime
-import json
+from sqlalchemy import Column, Integer, String, DateTime, Text, Index
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Index, LargeBinary
-
+from app.core.clock import utcnow
 from app.core.database import Base
 
 
@@ -23,7 +21,7 @@ class IdempotenciaLog(Base):
     resultado = Column(Text, nullable=False)  # JSON serialized response
 
     # Timestamps
-    criado_em = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    criado_em = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     # Indexes for performance
     __table_args__ = (

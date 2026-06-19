@@ -8,9 +8,9 @@ from sqlalchemy.exc import IntegrityError
 from app.models.idempotencia_log import IdempotenciaLog
 
 
-def generate_idempotency_key(key: str) -> str:
+def normalize_idempotency_key(key: str) -> str:
     """
-    Validate and normalize idempotency key.
+    Validate and normalize an idempotency key.
 
     Args:
         key: The idempotency key from request header
