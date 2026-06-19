@@ -1,6 +1,12 @@
+import os
+import sys
+
 import pytest
-from httpx import AsyncClient, ASGITransport
-from services.order.main import app
+from httpx import ASGITransport, AsyncClient
+from pydantic import ValidationError
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from services.order.main import OrderItem, app
 
 
 @pytest.mark.asyncio
@@ -22,3 +28,9 @@ async def test_metrics_endpoint():
         assert response.status_code == 200
         assert "text/plain" in response.headers["content-type"]
         assert "http_requests_total" in response.text
+
+
+def test_order_item_rejects_negative_unit_price():
+    """Garante que o modelo OrderItem valida unit_price positivo."""
+    with pytest.raises(ValidationError):
+        OrderItem(sku_id="sku-123", quantity=1, unit_price=-5.0)

@@ -44,7 +44,7 @@ class IdempotencyGuard:
     async def execute(
         self,
         key: str,
-        operation: Callable[[], Awaitable[Any]],
+        operation: Callable[[asyncpg.Connection], Awaitable[Any]],
         ttl_hours: int = 24,
     ) -> Any:
         """
@@ -53,31 +53,56 @@ class IdempotencyGuard:
         Se a chave já existir → retorna resultado anterior (sem re-executar).
         Se não existir → executa, persiste chave+resultado atomicamente.
         """
-        if not key or len(key) > 255:
-            raise ValueError("Idempotency-Key deve ter entre 1 e 255 caracteres")
+        key = self.validate_key(key)
 
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                # 1. Verifica existência da chave (dentro da transação)
+
+                # Lock exclusivo para esta Idempotency-Key
+                await conn.execute(
+                    """
+                    SELECT pg_advisory_xact_lock(hashtext($1));
+                    """,
+                    key,
+                )
+
+                # Verifica se já foi processada
                 row = await conn.fetchrow(
-                    "SELECT result FROM idempotency_keys WHERE key = $1 AND expires_at > NOW()",
+                    """
+                    SELECT result
+                    FROM idempotency_keys
+                    WHERE key = $1
+                      AND expires_at > NOW()
+                    """,
                     key,
                 )
 
                 if row:
-                    # Short-circuit: retorna resultado da primeira execução
                     return json.loads(row["result"])
-
-                # 2. Executa a lógica de negócio
-                result = await operation()
-
-                # 3. Persiste chave + resultado na MESMA transação
-                expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+                
                 await conn.execute(
                     """
-                    INSERT INTO idempotency_keys (key, result, expires_at)
-                    VALUES ($1, $2, $3)
-                    ON CONFLICT (key) DO NOTHING
+                    DELETE FROM idempotency_keys
+                    WHERE key = $1
+                    AND expires_at <= NOW()
+                    """,
+                    key,
+                )
+
+                # Executa apenas uma vez
+                result = await operation(conn)
+
+                expires_at = (
+                    datetime.now(timezone.utc)
+                    + timedelta(hours=ttl_hours)
+                )
+
+                await conn.execute(
+                    """
+                    INSERT INTO idempotency_keys
+                        (key, result, expires_at)
+                    VALUES
+                        ($1, $2, $3)
                     """,
                     key,
                     json.dumps(result, default=str),
@@ -88,9 +113,13 @@ class IdempotencyGuard:
 
     @staticmethod
     def validate_key(key: Optional[str]) -> str:
-        """Valida e retorna a chave, gerando uma se não fornecida."""
+
         if not key:
             return str(uuid.uuid4())
+
         if len(key) > 255:
-            raise ValueError("Idempotency-Key muito longa")
+            raise ValueError(
+                "Idempotency-Key deve possuir no máximo 255 caracteres"
+            )
+
         return key

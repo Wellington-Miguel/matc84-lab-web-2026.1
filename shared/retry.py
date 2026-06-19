@@ -15,6 +15,7 @@ import random
 import logging
 from dataclasses import dataclass
 from typing import Callable, Awaitable, TypeVar, Set
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class RetryConfig:
     base_delay: float = 0.5      # delay inicial em segundos
     max_delay: float = 8.0       # teto do backoff em segundos
     jitter: str = "full"         # "full" | "equal"
+    total_timeout: float = 15.0   # timeout global da operação
 
 
 class RetryExhaustedError(Exception):
@@ -61,7 +63,11 @@ def _compute_delay(attempt: int, config: RetryConfig) -> float:
 async def with_retry(
     fn: Callable[[], Awaitable[T]],
     config: RetryConfig = RetryConfig(),
-    retryable_exceptions: tuple = (Exception,),
+    retryable_exceptions: tuple[type[Exception], ...] = (
+        asyncio.TimeoutError,
+        ConnectionError,
+        OSError,
+    ),
 ) -> T:
     """
     Executa `fn` com retry automático em caso de falha transitória.
@@ -77,30 +83,63 @@ async def with_retry(
     Raises:
         RetryExhaustedError: se todas as tentativas falharem.
     """
+    started_at = time.monotonic()
     last_error: Exception = None
 
     for attempt in range(config.max_attempts):
+
+        elapsed = time.monotonic() - started_at
+
+        if elapsed >= config.total_timeout:
+            raise RetryExhaustedError(
+                last_error or TimeoutError("Timeout global excedido"),
+                attempt,
+            )
+
         try:
-            return await fn()
+            remaining_time = config.total_timeout - elapsed
+
+            return await asyncio.wait_for(
+                fn(),
+                timeout=remaining_time,
+            )
 
         except retryable_exceptions as err:
-            last_error = err
-            remaining = config.max_attempts - attempt - 1
 
-            if remaining == 0:
-                break  # não há mais tentativas
+            last_error = err
+
+            remaining_attempts = (
+                config.max_attempts - attempt - 1
+            )
+
+            if remaining_attempts <= 0:
+                break
 
             delay = _compute_delay(attempt, config)
+
+            # não ultrapassar o timeout global
+            elapsed = time.monotonic() - started_at
+            remaining_global = config.total_timeout - elapsed
+
+            if remaining_global <= 0:
+                break
+
+            delay = min(delay, remaining_global)
+
             logger.warning(
                 "retry.scheduled",
                 extra={
                     "attempt": attempt + 1,
                     "max_attempts": config.max_attempts,
                     "delay_ms": round(delay * 1000),
+                    "remaining_attempts": remaining_attempts,
                     "error": str(err),
-                    "remaining": remaining,
-                }
+                },
             )
+
             await asyncio.sleep(delay)
 
-    raise RetryExhaustedError(last_error, config.max_attempts)
+    raise RetryExhaustedError(
+        last_error,
+        config.max_attempts,
+    )
