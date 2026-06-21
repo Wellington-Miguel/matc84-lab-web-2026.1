@@ -12,6 +12,8 @@ Este projeto consiste em uma plataforma de e-commerce baseada em microsserviços
 
 A solução foi projetada utilizando **AWS**, **Render** e **Cloudflare**, separando serviços críticos e não críticos para garantir maior disponibilidade, flexibilidade e tolerância a falhas.
 
+Como mecanismo de validação da resiliência do sistema, foram definidos cenários de engenharia do caos para avaliar o comportamento da plataforma diante da indisponibilidade de serviços não essenciais.
+
 ## Arquitetura
 
 O sistema é composto por três aplicações principais:
