@@ -1,52 +1,18 @@
-import Fastify from 'fastify';
-import { SalesController } from './modules/sales/controllers/SalesController';
+import { app } from './app';
 import { IdempotencyWorker } from './shared/services/IdempotencyWorker';
-
-const fastify = Fastify({
-  logger: true
-});
-
-const salesController = new SalesController();
-
-// Define a rota POST /v1/sales mapeando para o controller com validação de esquema
-fastify.post('/v1/sales', {
-  schema: {
-    headers: {
-      type: 'object',
-      required: ['x-idempotency-key'],
-      properties: {
-        'x-idempotency-key': { 
-          type: 'string', 
-          pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' 
-        }
-      }
-    },
-    body: {
-      type: 'object',
-      required: ['productId', 'version'],
-      properties: {
-        productId: { 
-          type: 'string', 
-          pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' 
-        },
-        version: { type: 'integer', minimum: 1 }
-      }
-    }
-  }
-}, async (request, reply) => {
-  return salesController.create(request as any, reply);
-});
+import { config } from './config/env';
+import { database } from './shared/database/database';
 
 const start = async () => {
   try {
-    const port = Number(process.env.PORT) || 3000;
+    const port = config.port;
     const host = '0.0.0.0';
 
-    await fastify.listen({ port, host });
+    await app.listen({ port, host });
     console.log(`🚀 Servidor rodando em http://localhost:${port}`);
 
     // Inicia o worker de idempotência em background
-    if (process.env.DYNAMO_TABLE_NAME) {
+    if (config.dynamoTableName) {
       IdempotencyWorker.getInstance().start();
     } else {
       console.log(
@@ -54,9 +20,40 @@ const start = async () => {
       );
     }
   } catch (err) {
-    fastify.log.error(err);
+    app.log.error(err);
     process.exit(1);
   }
 };
+
+const shutdown = async (signal: string) => {
+  console.log(`\n[Server] Recebido sinal ${signal}. Iniciando desligamento gracioso...`);
+  
+  try {
+    IdempotencyWorker.getInstance().stop();
+    console.log('-> IdempotencyWorker interrompido.');
+  } catch (e) {
+    console.error('-> Erro ao parar IdempotencyWorker:', e);
+  }
+
+  try {
+    await app.close();
+    console.log('-> Servidor Fastify encerrado.');
+  } catch (e) {
+    console.error('-> Erro ao encerrar Fastify:', e);
+  }
+
+  try {
+    await database.getPool().end();
+    console.log('-> Pool de conexões do PostgreSQL fechado.');
+  } catch (e) {
+    console.error('-> Erro ao fechar pool do PostgreSQL:', e);
+  }
+
+  console.log('✨ Servidor desligado com sucesso!');
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 start();

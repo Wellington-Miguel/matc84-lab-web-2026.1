@@ -1,5 +1,6 @@
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { database } from '../database/database';
+import { config } from '../../config/env';
 
 export class IdempotencyWorker {
   private static instance: IdempotencyWorker;
@@ -10,13 +11,11 @@ export class IdempotencyWorker {
   private intervalMs: number;
 
   private constructor() {
-    const region = process.env.AWS_REGION;
-    this.tableName = process.env.DYNAMO_TABLE_NAME || '';
-
+    this.tableName = config.dynamoTableName;
     this.dynamoClient = new DynamoDBClient({
-      region: region || 'sa-east-1',
+      region: config.awsRegion,
     });
-    this.intervalMs = Number(process.env.OUTBOX_WORKER_INTERVAL_MS) || 60000;
+    this.intervalMs = config.outboxWorkerIntervalMs;
   }
 
   public static getInstance(): IdempotencyWorker {

@@ -1,4 +1,5 @@
 import { Pool } from 'pg';
+import { config } from '../../config/env';
 
 
 class Database {
@@ -7,7 +8,7 @@ class Database {
 
   private constructor() {
     this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL,
+      connectionString: config.databaseUrl,
     });
 
     this.pool.on('error', (err) => {
