@@ -1,7 +1,5 @@
 -- Migration: Create products and idempotency_outbox tables
 -- Target: PostgreSQL 16
--- Description: Sets up the initial schema for products with optimistic locking 
---              and an idempotency outbox table for reliable processing.
 
 -- 1. Create custom ENUM for idempotency status
 -- This ensures type safety at the database level.
@@ -33,7 +31,7 @@ CREATE TABLE IF NOT EXISTS products (
 -- id: UUID primary key (used as the idempotency key), status: current processing state,
 -- payload: JSONB data for the operation.
 CREATE TABLE IF NOT EXISTS idempotency_outbox (
-    id UUID PRIMARY KEY,
+    id UUID,
     status outbox_status NOT NULL DEFAULT 'PROCESSING',
     payload JSONB NOT NULL,
     error_message TEXT,
