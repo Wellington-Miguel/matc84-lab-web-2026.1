@@ -42,7 +42,7 @@ jobs:
           cache: pip
 
       - name: Instalar dependências
-        run: pip install -r services/order/requirements.txt pytest pytest-asyncio httpx
+        run: pip install -r services/order/requirements.txt -r services/payment/requirements.txt pytest pytest-asyncio httpx
 
       - name: Rodar migrations de teste
         run: |
@@ -84,12 +84,21 @@ jobs:
 
       - name: Build e Push — Order Service
         run: |
+          # Build & push Order service
           docker build \
             -t $ECR_REGISTRY/bebidas-order:${{ steps.meta.outputs.tag }} \
             -t $ECR_REGISTRY/bebidas-order:latest \
             -f services/order/Dockerfile .
           docker push $ECR_REGISTRY/bebidas-order:${{ steps.meta.outputs.tag }}
           docker push $ECR_REGISTRY/bebidas-order:latest
+
+          # Build & push Payment service
+          docker build \
+            -t $ECR_REGISTRY/bebidas-payment:${{ steps.meta.outputs.tag }} \
+            -t $ECR_REGISTRY/bebidas-payment:latest \
+            -f services/payment/Dockerfile .
+          docker push $ECR_REGISTRY/bebidas-payment:${{ steps.meta.outputs.tag }}
+          docker push $ECR_REGISTRY/bebidas-payment:latest
 
   # ── Deploy ────────────────────────────────────────────────────────────────────
   deploy:
