@@ -71,5 +71,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment/Dockerfile
+    container_name: bebidas-payment
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres/bebidas
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
