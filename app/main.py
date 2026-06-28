@@ -8,6 +8,7 @@ from app.core.config import settings
 from app.core.database import init_db, close_db
 from app.api.v1 import rotas_produto, rotas_saude, rotas_pedidos
 from app.services.worker_outbox import iniciar_worker_outbox, parar_worker_outbox
+from app.core.chaos import ChaosMiddleware
 
 logging.basicConfig(level=settings.LOG_LEVEL.upper())
 logger = logging.getLogger(__name__)
@@ -45,6 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_middleware(ChaosMiddleware)
 app.include_router(rotas_saude.router)
 app.include_router(rotas_produto.router, prefix=settings.API_V1_STR)
 app.include_router(rotas_pedidos.router, prefix=settings.API_V1_STR)
