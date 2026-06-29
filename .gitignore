@@ -1,0 +1,84 @@
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+**/build/
+**/.serverless/
+
+# Prisma generated clients
+**/generated/client/
+
+# Logs
+logs/
+**/logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Tests and coverage
+**/coverage/
+**/.nyc_output/
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
+!**/.env.example
+
+# Local service state
+.localstack/
+**/.cognito/
+
+# Temp files
+.temp/
+.tmp/
+**/.temp/
+**/.tmp/
+
+# Runtime data
+pids/
+**/pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs and editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+*.tfvars.local
+override.tf
+override.tf.json
+
+# Terraform generated artifacts
+terraform-distribuicao/placeholder/placeholder.zip
