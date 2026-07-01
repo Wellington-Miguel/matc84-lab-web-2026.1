@@ -201,11 +201,18 @@
 
 ---
 
-## 📋 Week 3: Observability, Testing & Integration - TODO
+## 📋 Week 3: Observability, Testing & Integration - IN PROGRESS
+
+### Done:
+- ✅ **app/core/logging.py** - Structured JSON logging with per-request
+  correlation IDs (via `contextvars`); every log line is JSON and carries the
+  active `request_id`.
+- ✅ **app/core/middleware.py** - `RequestContextMiddleware`: assigns/propagates
+  an `X-Request-ID` header, binds it to the logging context, echoes it back on
+  the response, and emits one structured access-log entry per request
+  (method, path, status, latency).
 
 ### Still to Implement:
-- [ ] **app/core/logging.py** - Structured JSON logging
-- [ ] **app/core/middleware.py** - Correlation ID middleware
 - [ ] **app/core/exceptions.py** - Custom exception classes
 - [ ] **app/schemas/erros.py** - Error response schemas
 - [ ] Enhanced test coverage (target: >80%)
@@ -228,19 +235,16 @@
 
 ## 🔧 How to Continue
 
-### To Run Tests (once dependencies installed):
+### To Run Tests:
 ```bash
-# Install dependencies
-pip install -e .
+# Install dependencies (incl. dev group: pytest, pytest-asyncio, httpx)
+make sync   # or: uv sync
 
-# Run all tests
-pytest tests/ -v
+# Run all tests (chaos injection is disabled during tests for determinism)
+make test   # or: uv run pytest
 
 # Run specific test file
-pytest tests/test_pedidos.py -v
-
-# Run with coverage
-pytest tests/ --cov=app --cov-report=html
+uv run pytest tests/test_pedidos.py -v
 ```
 
 ### To Start the Application:
@@ -274,8 +278,8 @@ app/
 │   ├── database.py               ✅ SQLAlchemy setup
 │   ├── idempotency.py            ✅ Request deduplication
 │   ├── exceptions.py             ⏳ Custom exceptions (Week 3)
-│   ├── logging.py                ⏳ Structured logging (Week 3)
-│   └── middleware.py             ⏳ Request middleware (Week 3)
+│   ├── logging.py                ✅ Structured JSON logging + correlation IDs
+│   └── middleware.py             ✅ Request correlation & access logging
 ├── models/
 │   ├── __init__.py               ✅ Model exports
 │   ├── produto.py                ✅ Product model
