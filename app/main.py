@@ -9,8 +9,10 @@ from app.core.database import init_db, close_db
 from app.api.v1 import rotas_produto, rotas_saude, rotas_pedidos
 from app.services.worker_outbox import iniciar_worker_outbox, parar_worker_outbox
 from app.core.chaos import ChaosMiddleware
+from app.core.logging import configurar_logging
+from app.core.middleware import RequestContextMiddleware
 
-logging.basicConfig(level=settings.LOG_LEVEL.upper())
+configurar_logging(settings.LOG_LEVEL)
 logger = logging.getLogger(__name__)
 
 
@@ -47,6 +49,9 @@ app.add_middleware(
 )
 
 app.add_middleware(ChaosMiddleware)
+# Added last so it wraps every other middleware: the correlation ID is bound
+# before Chaos runs and access logs capture even chaos-injected failures.
+app.add_middleware(RequestContextMiddleware)
 app.include_router(rotas_saude.router)
 app.include_router(rotas_produto.router, prefix=settings.API_V1_STR)
 app.include_router(rotas_pedidos.router, prefix=settings.API_V1_STR)
