@@ -63,13 +63,13 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL:         postgresql://bebidasadmin:[REDACTED]@postgres/bebidas
-      REDIS_URL:            redis://redis:6379
-      SQS_ORDER_QUEUE_URL:  http://localstack:4566/000000000000/bebidas-orders.fifo
-      AWS_DEFAULT_REGION:   us-east-1
-      AWS_ACCESS_KEY_ID:    test       # localstack aceita qualquer valor
+      DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
+      REDIS_URL: redis://redis:6379
+      SQS_ORDER_QUEUE_URL: http://localstack:4566/000000000000/bebidas-orders.fifo
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
-      AWS_ENDPOINT_URL:     http://localstack:4566
+      AWS_ENDPOINT_URL: http://localstack:4566
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,6 +77,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Inventory Service ──────────────────────────────────────────────────────
+  inventory-service:
+    build:
+      context: .
+      dockerfile: services/inventory/Dockerfile
+    container_name: bebidas-inventory
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Payment Service ────────────────────────────────────────────────────────
   payment-service:
     build:
       context: .
@@ -85,7 +104,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://bebidasadmin:[REDACTED]@postgres/bebidas
+      DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
     depends_on:
       postgres:
         condition: service_healthy
