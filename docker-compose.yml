@@ -38,15 +38,21 @@ services:
 
   # ── LocalStack (simula SQS da AWS localmente) ──────────────────────────────
   localstack:
-    image: localstack/localstack:latest
+    image: localstack/localstack:1.4.0
     container_name: bebidas-localstack
     ports:
       - "4566:4566"
     environment:
       SERVICES: sqs
+      DEBUG: "0"
       DEFAULT_REGION: us-east-1
     volumes:
       - "./infra/localstack:/etc/localstack/init/ready.d"  # script de setup das filas
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
   # ── Order Service ──────────────────────────────────────────────────────────
   order-service:
@@ -57,7 +63,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL:         postgresql://bebidasadmin:senha_local_dev@postgres/bebidas
+      DATABASE_URL:         postgresql://bebidasadmin:[REDACTED]@postgres/bebidas
       REDIS_URL:            redis://redis:6379
       SQS_ORDER_QUEUE_URL:  http://localstack:4566/000000000000/bebidas-orders.fifo
       AWS_DEFAULT_REGION:   us-east-1
@@ -79,7 +85,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres/bebidas
+      DATABASE_URL: postgresql://bebidasadmin:[REDACTED]@postgres/bebidas
     depends_on:
       postgres:
         condition: service_healthy
