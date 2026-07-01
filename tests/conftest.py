@@ -9,6 +9,12 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.database import Base, get_db
 from app.models import Produto, Pedido, ItemPedido
+import app.core.chaos as chaos
+
+# Disable chaos injection during tests so results are deterministic. The chaos
+# middleware randomly injects 500s and latency, which is intended for manual
+# resilience experiments, not the automated test suite.
+chaos.CHAOS_ENABLED = False
 
 
 # Test database URL - use SQLite for simplicity in testing
