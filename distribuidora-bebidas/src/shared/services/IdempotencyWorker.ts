@@ -14,6 +14,10 @@ export class IdempotencyWorker {
     this.tableName = config.dynamoTableName;
     this.dynamoClient = new DynamoDBClient({
       region: config.awsRegion,
+      ...(config.dynamoEndpoint && { 
+        endpoint: config.dynamoEndpoint,
+        credentials: { accessKeyId: 'local', secretAccessKey: 'local' } // <--- Adicionado aqui
+      }),
     });
     this.intervalMs = config.outboxWorkerIntervalMs;
   }
