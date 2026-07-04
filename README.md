@@ -137,6 +137,12 @@ npm test
 
 ```
 
+### 🧪 Suíte de Testes e Validação Real
+
+A aplicação divide sua estratégia de testes em duas camadas fundamentais:
+
+1. **Testes Unitários e de Contrato (`tests/unit` e `tests/integration`):** Utilizam dublês de teste (*mocks*) para validar caminhos de decisão isolados e validações de esquema das rotas HTTP em alta velocidade.
+2. **Teste de Concorrência Real (`tests/sales-concurrency.spec.ts`):** Um teste de integração ponta a ponta que se conecta à infraestrutura local real (PostgreSQL). Ele simula um cenário extremo de concorrência disparando **10 requisições paralelas simultâneas** contra o mesmo item. O teste valida na prática se o mecanismo de **Controle de Concorrência Otimista (OCC)** do banco permite apenas 1 venda com sucesso (`201`), rejeita as outras 9 por conflito de versão (`422`) e mantém a integridade geométrica do estoque.
 ---
 
 ## 📈 Testes de Estresse e Concorrência (Autocannon)
