@@ -115,6 +115,16 @@ npm run dev
 ```
 
 *O servidor estará escutando em `http://localhost:3000`.*
+---
+
+## 🔍 Rotas de Inspeção e Debug Local
+
+Para facilitar a validação do estado do sistema em tempo real (especialmente durante demonstrações e apresentações), foram implementadas duas rotas auxiliares de inspeção visual:
+
+* **Listagem de Estoque:** `GET http://localhost:3000/v1/products`
+  * Retorna o estado atualizado do produto, permitindo checar o decremento do estoque e o incremento da `version` (Controle de Concorrência Otimista).
+* **Histórico de Idempotência:** `GET http://localhost:3000/v1/idempotency`
+  * Retorna os últimos 50 registros salvos na tabela `idempotency_outbox` do PostgreSQL, ideal para verificar o status de resiliência (`PROCESSING`, `COMPLETED` ou `FAILED`) e acompanhar a sincronização assíncrona feita pelo background worker.
 
 ---
 

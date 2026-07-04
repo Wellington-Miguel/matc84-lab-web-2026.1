@@ -101,4 +101,12 @@ export class IdempotencyRepository {
       console.error('[IdempotencyRepository] Background DynamoDB update failed:', err);
     }
   }
+
+  // Busca os últimos 50 registros do outbox para inspeção visual
+  public async getAllFromPostgres(): Promise<any[]> {
+    const res = await this.pgPool.query(
+      'SELECT id, status, payload, error_message, updated_at FROM idempotency_outbox ORDER BY updated_at DESC LIMIT 50;'
+    );
+    return res.rows;
+  }
 }

@@ -25,4 +25,12 @@ export class ProductsRepository {
     }
     return res.rows[0] as Product;
   }
+
+  // Busca todos os produtos para a rota de inspeção
+  public async findAll(clientOrPool: any): Promise<Product[]> {
+    const res = await clientOrPool.query(
+      'SELECT id, name, stock, version, updated_at FROM products ORDER BY name ASC;'
+    );
+    return res.rows as Product[];
+  }
 }

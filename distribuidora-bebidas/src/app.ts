@@ -1,6 +1,9 @@
 import Fastify, { FastifyInstance } from 'fastify';
 import { SalesController } from './modules/sales/controllers/SalesController';
 import { validateConfig } from './config/env';
+import { IdempotencyRepository } from './modules/sales/repositories/IdempotencyRepository';
+import { ProductsRepository } from './modules/sales/repositories/ProductsRepository';
+import { database } from './shared/database/database';
 
 // Validação inicial das variáveis
 validateConfig();
@@ -8,6 +11,9 @@ validateConfig();
 export const app: FastifyInstance = Fastify({
   logger: process.env.NODE_ENV === 'test' ? false : true // Desativa logs em ambiente de teste 
 });
+
+const productsRepository = new ProductsRepository();
+const idempotencyRepository = new IdempotencyRepository(database.getPool());
 
 // Tratamento global de erros
 app.setErrorHandler((error: any, request, reply) => {
@@ -55,4 +61,24 @@ app.post('/v1/sales', {
   }
 }, async (request, reply) => {
   return salesController.create(request as any, reply);
+});
+
+app.get('/v1/products', async (request, reply) => {
+  try {
+    const products = await productsRepository.findAll(database.getPool());
+    return reply.status(200).send(products);
+  } catch (error) {
+    request.log.error(error);
+    return reply.status(500).send({ error: 'Erro ao buscar produtos' });
+  }
+});
+
+app.get('/v1/idempotency', async (request, reply) => {
+  try {
+    const outboxRecords = await idempotencyRepository.getAllFromPostgres();
+    return reply.status(200).send(outboxRecords);
+  } catch (error) {
+    request.log.error(error);
+    return reply.status(500).send({ error: 'Erro ao buscar registros de idempotência' });
+  }
 });
