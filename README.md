@@ -9,8 +9,8 @@ Bem-vindo ao repositório oficial da disciplina **MATC84 - Laboratório de Progr
 Esta branch (`equipe-01-statelessness-e-estado-distribuido`) abriga a implementação do backend da **Distribuidora de Bebidas**, focado no pilar de **Statelessness e Estado Distribuído**.
 
 ### 👥 Integrantes
-* **Lucca Giovanni Lobo Gonçalves**
-* **Samuel de Almeida dos Santos**
+* **Lucca Giovanni Lobo Gonçalves** (Luccacalu)
+* **Samuel de Almeida dos Santos** (samucaasantos)
 
 ### 🏗️ Arquitetura do Projeto
 
