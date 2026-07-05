@@ -91,6 +91,21 @@ async function main() {
       console.log('-> Já existe um produto na tabela.');
     }
 
+    //Geração do .env 
+    const envPath = path.join(__dirname, '..', '.env');
+    const envContent = `DATABASE_URL=postgresql://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}
+AWS_REGION=sa-east-1
+DYNAMO_TABLE_NAME=
+PORT=3000
+OUTBOX_WORKER_INTERVAL_MS=5000`;
+
+    try {
+      fs.writeFileSync(envPath, envContent, 'utf8');
+      console.log(`\n-> Arquivo .env gerado com sucesso em: ${envPath}`);
+    } catch (writeErr) {
+      console.error(`\n-> ERRO ao gerar o arquivo .env: ${writeErr.message}`);
+    }
+
     console.log('\n=============================================');
     console.log('✨ CONFIGURAÇÃO CONCLUÍDA COM SUCESSO! ✨');
     console.log('=============================================');
