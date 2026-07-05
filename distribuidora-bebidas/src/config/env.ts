@@ -2,7 +2,7 @@ export interface Config {
   databaseUrl: string;
   awsRegion: string;
   dynamoTableName: string;
-  dynamoEndpoint?: string; // Nova propriedade
+  dynamoEndpoint?: string;
   outboxWorkerIntervalMs: number;
   port: number;
 }
