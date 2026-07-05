@@ -19,13 +19,14 @@ export class SalesController {
 
     const { productId, version } = request.body;
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('TIMEOUT_LIMIT_REACHED')), 5000)
-    );
+    let timeoutHandle: NodeJS.Timeout;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error('TIMEOUT_LIMIT_REACHED')), 5000);
+    });
 
     try {
       const resultPromise = this.createSaleService.execute(idempotencyKey, productId, version);
-      
+
       const result = await Promise.race([
         resultPromise,
         timeoutPromise
@@ -45,6 +46,8 @@ export class SalesController {
           return reply.status(500).send({ error: 'Internal Server Error' });
         }
       }
+    } finally {
+      clearTimeout(timeoutHandle!);
     }
   }
 }

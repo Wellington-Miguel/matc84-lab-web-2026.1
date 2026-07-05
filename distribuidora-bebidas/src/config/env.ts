@@ -2,6 +2,7 @@ export interface Config {
   databaseUrl: string;
   awsRegion: string;
   dynamoTableName: string;
+  dynamoEndpoint?: string;
   outboxWorkerIntervalMs: number;
   port: number;
 }
@@ -10,6 +11,7 @@ export const config: Config = {
   databaseUrl: process.env.DATABASE_URL || '',
   awsRegion: process.env.AWS_REGION || 'sa-east-1',
   dynamoTableName: process.env.DYNAMO_TABLE_NAME || '',
+  dynamoEndpoint: process.env.DYNAMO_ENDPOINT || undefined,
   outboxWorkerIntervalMs: Number(process.env.OUTBOX_WORKER_INTERVAL_MS) || 60000,
   port: Number(process.env.PORT) || 3000,
 };
