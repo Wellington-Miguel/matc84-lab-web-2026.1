@@ -1,11 +1,53 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sales-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: salesdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d salesdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   dynamodb-local:
     image: amazon/dynamodb-local:2.5.3
     container_name: sales-dynamodb-local
     ports:
       - "8123:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sales-backend
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://postgres:password@postgres:5432/salesdb
+      AWS_REGION: sa-east-1
+      DYNAMO_TABLE_NAME: sales-idempotency-dev
+      DYNAMO_ENDPOINT: http://dynamodb-local:8000
+      PORT: 3000
+      OUTBOX_WORKER_INTERVAL_MS: 5000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_started
     volumes:
-      - ./docker/dynamodb:/home/dynamodblocal/data
-    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data"
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
+      - /usr/src/app/dist 
+
+volumes:
+  postgres_data:

@@ -2,7 +2,7 @@ const { DynamoDBClient, CreateTableCommand } = require('@aws-sdk/client-dynamodb
 
 const client = new DynamoDBClient({
   region: 'sa-east-1',
-  endpoint: 'http://localhost:8123',
+  endpoint: process.env.DYNAMO_ENDPOINT || 'http://localhost:8123',
   credentials: {
     accessKeyId: 'fakeAccessKey',
     secretAccessKey: 'fakeSecretAccessKey'
