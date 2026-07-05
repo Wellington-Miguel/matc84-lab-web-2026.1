@@ -11,6 +11,7 @@ Esta branch (`equipe-01-statelessness-e-estado-distribuido`) abriga a implementa
 ### 👥 Integrantes
 * **Lucca Giovanni Lobo Gonçalves** (Luccacalu)
 * **Samuel de Almeida dos Santos** (samucaasantos)
+* **Uanderson Santos Celestino** (wanderson-santo)
 
 ### 🏗️ Arquitetura do Projeto
 
