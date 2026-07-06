@@ -123,4 +123,71 @@ describe('CreateSaleService', () => {
     expect(mockPgClient.query).toHaveBeenCalledWith('COMMIT');
     expect(mockPgClient.release).toHaveBeenCalled();
   });
+
+  it('deve retornar o payload cacheado do Postgres se duas requisições colidirem na mesma chave de idempotência (23505)', async () => {
+    mockGetFromDynamo.mockResolvedValue(null);
+
+    const duplicateKeyError = { code: '23505' };
+    mockUpdateStockAndVersion.mockRejectedValue(duplicateKeyError);
+
+    const cachedPayload = { message: 'Sale completed successfully', product: { id: 'prod-1', version: 2 } };
+    mockGetFromPostgres.mockResolvedValue({
+      status: 'PROCESSING',
+      payload: cachedPayload,
+    });
+
+    const result = await service.execute('key-123', 'prod-1', 1);
+
+    expect(result).toEqual({
+      source: 'cache',
+      status: 'success',
+      httpStatus: 201,
+      payload: cachedPayload,
+    });
+
+    expect(mockPgClient.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(mockGetFromPostgres).toHaveBeenCalledWith('key-123');
+    expect(mockPgClient.release).toHaveBeenCalled();
+  });
+
+  it('deve retornar 422 a partir do cache do Postgres se o registro colidido (23505) tiver falhado', async () => {
+    mockGetFromDynamo.mockResolvedValue(null);
+    mockUpdateStockAndVersion.mockRejectedValue({ code: '23505' });
+
+    const failedPayload = { error: 'Unprocessable Entity', message: 'Insufficient stock or product version mismatch' };
+    mockGetFromPostgres.mockResolvedValue({
+      status: 'FAILED',
+      payload: failedPayload,
+    });
+
+    const result = await service.execute('key-123', 'prod-1', 1);
+
+    expect(result).toEqual({
+      source: 'cache',
+      status: 'failed',
+      httpStatus: 422,
+      payload: failedPayload,
+    });
+  });
+
+  it('deve propagar o erro de colisão (23505) se não houver registro correspondente no Postgres', async () => {
+    mockGetFromDynamo.mockResolvedValue(null);
+    mockUpdateStockAndVersion.mockRejectedValue({ code: '23505' });
+    mockGetFromPostgres.mockResolvedValue(null);
+
+    await expect(service.execute('key-123', 'prod-1', 1)).rejects.toEqual({ code: '23505' });
+
+    expect(mockPgClient.release).toHaveBeenCalled();
+  });
+
+  it('deve propagar erros que não sejam de colisão de chave (diferentes de 23505)', async () => {
+    mockGetFromDynamo.mockResolvedValue(null);
+    const unexpectedError = new Error('Falha inesperada de conexão');
+    mockUpdateStockAndVersion.mockRejectedValue(unexpectedError);
+
+    await expect(service.execute('key-123', 'prod-1', 1)).rejects.toThrow('Falha inesperada de conexão');
+
+    expect(mockGetFromPostgres).not.toHaveBeenCalled();
+    expect(mockPgClient.release).toHaveBeenCalled();
+  });
 });
