@@ -1,6 +1,7 @@
 import { DynamoDBClient, PutItemCommand } from '@aws-sdk/client-dynamodb';
 import { database } from '../database/database';
 import { config } from '../../config/env';
+import { createDynamoClient } from '../aws/dynamoClient';
 
 export class IdempotencyWorker {
   private static instance: IdempotencyWorker;
@@ -12,13 +13,7 @@ export class IdempotencyWorker {
 
   private constructor() {
     this.tableName = config.dynamoTableName;
-    this.dynamoClient = new DynamoDBClient({
-      region: config.awsRegion,
-      ...(config.dynamoEndpoint && { 
-        endpoint: config.dynamoEndpoint,
-        credentials: { accessKeyId: 'local', secretAccessKey: 'local' } // <--- Adicionado aqui
-      }),
-    });
+    this.dynamoClient = createDynamoClient();
     this.intervalMs = config.outboxWorkerIntervalMs;
   }
 

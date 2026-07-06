@@ -1,6 +1,6 @@
 import { PoolClient, Pool } from 'pg';
 import { DynamoDBClient, GetItemCommand, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
-import { config } from '../../../config/env';
+import { createDynamoClient } from '../../../shared/aws/dynamoClient';
 
 export interface IdempotencyRecord {
   status: 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -14,13 +14,7 @@ export class IdempotencyRepository {
   private pgPool: Pool;
 
   constructor(pgPool: Pool) {
-    this.dynamoClient = new DynamoDBClient({
-      region: process.env.AWS_REGION || 'sa-east-1',
-      ...(config.dynamoEndpoint && { 
-        endpoint: config.dynamoEndpoint,
-        credentials: { accessKeyId: 'local', secretAccessKey: 'local' } // <--- Adicionado aqui
-      }),
-    });
+    this.dynamoClient = createDynamoClient();
     this.dynamoTable = process.env.DYNAMO_TABLE_NAME || '';
     this.pgPool = pgPool;
   }
