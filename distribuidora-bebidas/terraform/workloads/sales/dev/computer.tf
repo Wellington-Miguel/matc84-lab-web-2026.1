@@ -1,5 +1,6 @@
 variable "vpc_id" { type = string }
 variable "public_subnet_id" { type = string }
+variable "allowed_ssh_cidr_blocks" { type = list(string) }
 
 resource "aws_security_group" "ec2_sg" {
   name        = "sales-dev-ec2-sg"
@@ -10,7 +11,7 @@ resource "aws_security_group" "ec2_sg" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = var.allowed_ssh_cidr_blocks
   }
 
   egress {
