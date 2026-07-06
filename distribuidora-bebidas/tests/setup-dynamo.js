@@ -1,7 +1,9 @@
 const { DynamoDBClient, CreateTableCommand } = require('@aws-sdk/client-dynamodb');
 
+const tableName = process.env.DYNAMO_TABLE_NAME || 'sales-idempotency-dev';
+
 const client = new DynamoDBClient({
-  region: 'sa-east-1',
+  region: process.env.AWS_REGION || 'sa-east-1',
   endpoint: process.env.DYNAMO_ENDPOINT || 'http://localhost:8123',
   credentials: {
     accessKeyId: 'fakeAccessKey',
@@ -10,10 +12,10 @@ const client = new DynamoDBClient({
 });
 
 async function createTable() {
-  console.log('⏳ Criando tabela de idempotência no DynamoDB Local...');
-  
+  console.log(`⏳ Criando tabela de idempotência "${tableName}" no DynamoDB Local...`);
+
   const command = new CreateTableCommand({
-    TableName: 'sales-idempotency-dev',
+    TableName: tableName,
     AttributeDefinitions: [
       { AttributeName: 'id', AttributeType: 'S' }
     ],
@@ -28,7 +30,7 @@ async function createTable() {
 
   try {
     await client.send(command);
-    console.log('✨ Tabela "sales-idempotency-dev" criada com sucesso no DynamoDB Local!');
+    console.log(`✨ Tabela "${tableName}" criada com sucesso no DynamoDB Local!`);
   } catch (err) {
     if (err.name === 'ResourceInUseException') {
       console.log('Opa! A tabela já existe no banco local.');
