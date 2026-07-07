@@ -58,9 +58,8 @@ sanitizado na fila definida por `AUTH_REGISTRATION_DLQ_URL` e retorna `201` com
 ## Deploy e infraestrutura necessários
 
 O artefato da Lambda deve usar runtime Node.js e handler `dist/lambda.handler`.
-O build também copia o Prisma Client gerado da lib compartilhada para
-`dist/@libs/prisma/generated` e cria wrappers `dist/main.js`/`dist/lambda.js`
-para manter compatibilidade com o Nest CLI.
+O build compila primeiro o pacote local `/lambdas/@libs/prisma` e depois a
+Lambda `auth`, usando `@libs/prisma` como dependência `file:`.
 Antes do deploy:
 
 - executar `npm run prisma:migrate:deploy` contra o PostgreSQL;

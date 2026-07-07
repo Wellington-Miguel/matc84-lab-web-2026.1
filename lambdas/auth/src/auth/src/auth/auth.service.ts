@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'node:crypto';
-import { Prisma, PrismaService, User } from '../../../../../@libs/prisma';
+import { Prisma, PrismaService, User } from '@libs/prisma';
 import {
   RetryExhaustedError,
   retryWithFullJitter,

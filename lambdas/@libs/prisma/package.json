@@ -1,9 +1,29 @@
 {
+  "name": "@libs/prisma",
+  "version": "0.0.1",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "generated",
+    "schema.prisma",
+    "migrations"
+  ],
+  "scripts": {
+    "build": "npm run prisma:generate && tsc -p tsconfig.json && rm -rf dist/generated && cp -R generated dist/generated",
+    "prisma:generate": "PRISMA_GENERATE_SKIP_AUTOINSTALL=true prisma generate --schema schema.prisma",
+    "prisma:migrate:dev": "PRISMA_GENERATE_SKIP_AUTOINSTALL=true prisma migrate dev --schema schema.prisma",
+    "prisma:migrate:deploy": "PRISMA_GENERATE_SKIP_AUTOINSTALL=true prisma migrate deploy --schema schema.prisma"
+  },
   "dependencies": {
     "@nestjs/common": "^11.1.27",
     "@prisma/client": "^6.19.1",
-    "prisma": "^6.19.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.1",
+    "typescript": "^5.9.3"
   }
 }

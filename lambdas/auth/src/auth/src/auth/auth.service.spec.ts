@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../../../../../@libs/prisma';
+import { PrismaService } from '@libs/prisma';
 import { CognitoService } from '../infrastructure/services/cognito.service';
 import { RegistrationDlqService } from '../infrastructure/services/registration-dlq.service';
 import { AuthService } from './auth.service';
