@@ -6,7 +6,16 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["auth", "produtos"]
+  schemas  = ["auth", "produtos", "pedidos"]
+}
+
+enum OrderStatus {
+  pending
+  cancelled
+  paid
+  completed
+
+  @@schema("pedidos")
 }
 
 model User {
@@ -33,4 +42,17 @@ model Product {
 
   @@map("products")
   @@schema("produtos")
+}
+
+model Order {
+  id        String      @id @default(uuid())
+  clientId  String      @map("client_id")
+  status    OrderStatus @default(pending)
+  products  Json
+  total     Decimal     @db.Decimal(10, 2)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+
+  @@map("orders")
+  @@schema("pedidos")
 }
