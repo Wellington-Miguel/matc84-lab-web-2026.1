@@ -17,7 +17,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./infra/migrations:/docker-entrypoint-initdb.d  # roda as migrations automaticamente
+      - ./infra/migrations:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bebidasadmin -d bebidas"]
       interval: 10s
@@ -47,7 +47,7 @@ services:
       DEBUG: "0"
       DEFAULT_REGION: us-east-1
     volumes:
-      - "./infra/localstack:/etc/localstack/init/ready.d"  # script de setup das filas
+      - "./infra/localstack:/etc/localstack/init/ready.d"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
       interval: 10s
@@ -85,6 +85,46 @@ services:
     container_name: bebidas-inventory
     ports:
       - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Notification Service ─────────────────────────────────────────────────────
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification/Dockerfile
+    container_name: bebidas-notification
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
+      SQS_NOTIFICATION_QUEUE_URL: http://localstack:4566/000000000000/notifications.fifo
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      ENVIRONMENT: development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Catalog Service ────────────────────────────────────────────────────────
+  catalog-service:
+    build:
+      context: .
+      dockerfile: services/catalog/Dockerfile
+    container_name: bebidas-catalog
+    ports:
+      - "8003:8003"
     environment:
       DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
       REDIS_URL: redis://redis:6379
