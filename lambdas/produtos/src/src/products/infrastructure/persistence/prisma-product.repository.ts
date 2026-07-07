@@ -14,6 +14,7 @@ type PrismaProduct = {
   price: { toNumber(): number } | number;
   createdAt: Date;
   updatedAt: Date;
+  deletedAt: Date | null;
 };
 
 @Injectable()
@@ -27,6 +28,7 @@ export class PrismaProductRepository implements ProductRepository {
 
   async findAll(): Promise<Product[]> {
     const products = await this.prisma.product.findMany({
+      where: { deletedAt: null },
       orderBy: { updatedAt: 'desc' },
     });
     return products.map((product) => this.toDomain(product));
@@ -34,22 +36,23 @@ export class PrismaProductRepository implements ProductRepository {
 
   async findRecentlyUpdated(): Promise<Product[]> {
     const products = await this.prisma.product.findMany({
+      where: { deletedAt: null },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
     });
     return products.map((product) => this.toDomain(product));
   }
 
   async findById(id: string): Promise<Product | null> {
-    const product = await this.prisma.product.findUnique({
-      where: { id },
+    const product = await this.prisma.product.findFirst({
+      where: { id, deletedAt: null },
     });
 
     return product ? this.toDomain(product) : null;
   }
 
   async update(id: string, data: UpdateProductInput): Promise<Product | null> {
-    const exists = await this.prisma.product.findUnique({
-      where: { id },
+    const exists = await this.prisma.product.findFirst({
+      where: { id, deletedAt: null },
       select: { id: true },
     });
 
@@ -66,8 +69,8 @@ export class PrismaProductRepository implements ProductRepository {
   }
 
   async delete(id: string): Promise<boolean> {
-    const exists = await this.prisma.product.findUnique({
-      where: { id },
+    const exists = await this.prisma.product.findFirst({
+      where: { id, deletedAt: null },
       select: { id: true },
     });
 
@@ -75,7 +78,10 @@ export class PrismaProductRepository implements ProductRepository {
       return false;
     }
 
-    await this.prisma.product.delete({ where: { id } });
+    await this.prisma.product.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
     return true;
   }
 
@@ -92,6 +98,7 @@ export class PrismaProductRepository implements ProductRepository {
       price,
       product.createdAt,
       product.updatedAt,
+      product.deletedAt,
     );
   }
 }

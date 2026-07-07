@@ -18,4 +18,7 @@ export class ProductResponseDto {
 
   @ApiProperty({ example: '2026-07-07T12:30:00.000Z' })
   updatedAt: Date;
+
+  @ApiProperty({ example: null, nullable: true })
+  deletedAt: Date | null;
 }
