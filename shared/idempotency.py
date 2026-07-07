@@ -2,19 +2,8 @@
 shared/idempotency.py
 Protocolo Check-then-Act — evita cobranças duplicadas e pedidos em duplicidade.
 
-O servidor verifica a chave, executa a lógica e persiste chave+resultado
-em uma única transação atômica.
-
 Uso:
     from shared.idempotency import IdempotencyGuard
-
-    guard = IdempotencyGuard(db_pool)
-
-    result = await guard.execute(
-        key=request.headers["idempotency-key"],
-        operation=lambda: create_order_in_db(payload),
-        ttl_hours=24,
-    )
 """
 import json
 import uuid
@@ -58,7 +47,6 @@ class IdempotencyGuard:
         async with self._pool.acquire() as conn:
             async with conn.transaction():
 
-                # Lock exclusivo para esta Idempotency-Key
                 await conn.execute(
                     """
                     SELECT pg_advisory_xact_lock(hashtext($1));
@@ -66,7 +54,6 @@ class IdempotencyGuard:
                     key,
                 )
 
-                # Verifica se já foi processada
                 row = await conn.fetchrow(
                     """
                     SELECT result
@@ -89,7 +76,6 @@ class IdempotencyGuard:
                     key,
                 )
 
-                # Executa apenas uma vez
                 result = await operation(conn)
 
                 expires_at = (

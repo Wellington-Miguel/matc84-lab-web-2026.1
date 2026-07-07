@@ -7,11 +7,6 @@ Campos obrigatórios em todo log:
 
 Uso:
     from shared.logger import get_logger, LogContext
-
-    logger = get_logger("order-service")
-
-    with LogContext(correlation_id="uuid-aqui", request_id="req-123"):
-        logger.info("order.created", order_id="abc", total=99.90)
 """
 import json
 import logging
@@ -21,7 +16,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Optional
 
-# Variáveis de contexto — propagam pelo request sem passar manualmente
+# Variáveis de contexto 
 _correlation_id: ContextVar[str] = ContextVar("correlation_id", default="")
 _request_id: ContextVar[str] = ContextVar("request_id", default="")
 
@@ -42,7 +37,7 @@ class JsonFormatter(logging.Formatter):
             "error_type": record.__dict__.get("error_type", None),
         }
 
-        # Adiciona campos extras passados via `extra={...}`
+        # Adiciona campos extras 
         for key, val in record.__dict__.items():
             if key not in ("message", "msg", "args", "levelname", "levelno",
                            "name", "pathname", "filename", "module", "exc_info",

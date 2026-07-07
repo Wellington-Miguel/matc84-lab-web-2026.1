@@ -5,10 +5,6 @@ Exponential Backoff com Full Jitter — evita Thundering Herd.
 Uso:
     from shared.retry import with_retry, RetryConfig
 
-    result = await with_retry(
-        lambda: httpx_client.post("/inventory/reserve", json=payload),
-        config=RetryConfig(max_attempts=4, base_delay=0.5)
-    )
 """
 import asyncio
 import random
@@ -21,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-# Códigos HTTP que justificam retry (falhas transitórias)
+# Códigos HTTP 
 RETRYABLE_STATUS_CODES: Set[int] = {429, 500, 502, 503, 504}
 
 
