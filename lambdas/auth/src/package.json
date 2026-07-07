@@ -6,8 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npm --prefix ../../../@libs/prisma run build && nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"../../../@libs/prisma/*.ts\"",
+    "build": "npm --prefix ../../@libs/prisma run build && nest build",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"../../@libs/prisma/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -18,12 +18,12 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "prisma:generate": "npm --prefix ../../../@libs/prisma run prisma:generate",
-    "prisma:migrate:dev": "npm --prefix ../../../@libs/prisma run prisma:migrate:dev",
-    "prisma:migrate:deploy": "npm --prefix ../../../@libs/prisma run prisma:migrate:deploy"
+    "prisma:generate": "npm --prefix ../../@libs/prisma run prisma:generate",
+    "prisma:migrate:dev": "npm --prefix ../../@libs/prisma run prisma:migrate:dev",
+    "prisma:migrate:deploy": "npm --prefix ../../@libs/prisma run prisma:migrate:deploy"
   },
   "dependencies": {
-    "@libs/prisma": "file:../../../@libs/prisma",
+    "@libs/prisma": "file:../../@libs/prisma",
     "@aws-sdk/client-cognito-identity-provider": "^3.1071.0",
     "@aws-sdk/client-sqs": "^3.1071.0",
     "@codegenie/serverless-express": "^4.17.1",

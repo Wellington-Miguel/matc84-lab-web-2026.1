@@ -33,6 +33,10 @@ export interface RegisterResult {
   confirmationRequired: true;
 }
 
+type PrismaKnownRequestError = Prisma.PrismaClientKnownRequestError & {
+  code: string;
+};
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -187,7 +191,7 @@ export class AuthService {
       return !(error instanceof Prisma.PrismaClientValidationError);
     }
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (this.isKnownPrismaRequestError(error)) {
       return ![
         'P2000',
         'P2002',
@@ -210,7 +214,7 @@ export class AuthService {
   ): FailedRegistrationEvent {
     const cause = error.cause;
     const errorCode =
-      cause instanceof Prisma.PrismaClientKnownRequestError
+      this.isKnownPrismaRequestError(cause)
         ? cause.code
         : cause instanceof Error
           ? cause.name
@@ -228,5 +232,11 @@ export class AuthService {
       correlationId,
       occurredAt: new Date().toISOString(),
     };
+  }
+
+  private isKnownPrismaRequestError(
+    error: unknown,
+  ): error is PrismaKnownRequestError {
+    return error instanceof Prisma.PrismaClientKnownRequestError;
   }
 }
