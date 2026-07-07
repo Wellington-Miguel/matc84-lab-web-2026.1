@@ -12,6 +12,7 @@ type PrismaProduct = {
   name: string;
   description: string;
   price: { toNumber(): number } | number;
+  amount: number;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -96,6 +97,7 @@ export class PrismaProductRepository implements ProductRepository {
       product.name,
       product.description,
       price,
+      product.amount,
       product.createdAt,
       product.updatedAt,
       product.deletedAt,

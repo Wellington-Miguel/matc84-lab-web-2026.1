@@ -4,6 +4,7 @@ export type CreateProductInput = {
   name: string;
   description: string;
   price: number;
+  amount: number;
 };
 
 export type UpdateProductInput = Partial<CreateProductInput>;
