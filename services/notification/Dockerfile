@@ -7,7 +7,7 @@ WORKDIR /app
 COPY services/notification/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# ── Imagem final ───────────────────────────────────────────────────────────────
+# Imagem 
 FROM python:3.12-slim AS runner
 
 RUN groupadd -r app && useradd -r -g app app

@@ -23,7 +23,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_
 from pydantic import BaseModel, field_validator
 from typing import Optional
 
-# Imports compartilhados (ajuste o PYTHONPATH ao rodar)
+# Imports compartilhados 
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -59,13 +59,13 @@ SQS_PUBLISH_TOTAL = Counter(
     ["result"],
 )
 
-# ── Configurações (via variáveis de ambiente) ─────────────────────────────────
+# Configurações
 DB_URL       = os.getenv("DATABASE_URL", "postgresql://bebidasadmin:senha@localhost/bebidas")
 REDIS_URL    = os.getenv("REDIS_URL", "redis://localhost:6379")
 SQS_QUEUE    = os.getenv("SQS_ORDER_QUEUE_URL", "")
 AWS_REGION   = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
-# ── Recursos globais ──────────────────────────────────────────────────────────
+#Recursos globais
 db_pool: asyncpg.Pool = None
 redis_client: aioredis.Redis = None
 sqs_client = None
@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
     sqs_client = boto3.client("sqs", region_name=AWS_REGION)
 
     logger.info("order-service.ready")
-    yield  # aplicação rodando
+    yield  
 
     await db_pool.close()
     await redis_client.close()
@@ -93,7 +93,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Order Service", lifespan=lifespan)
 
 
-# ── Middleware: correlation ID propagado a todos os logs ───────────────────────
+# Middleware
 @app.middleware("http")
 async def correlation_middleware(request: Request, call_next):
     correlation_id = request.headers.get("x-correlation-id") or str(uuid.uuid4())
@@ -121,7 +121,7 @@ async def correlation_middleware(request: Request, call_next):
                 ).observe(timer.elapsed_ms / 1000)
 
 
-# ── Models ────────────────────────────────────────────────────────────────────
+# Models
 class OrderItem(BaseModel):
     sku_id: str
     quantity: int
@@ -151,7 +151,7 @@ class CreateOrderRequest(BaseModel):
         return round(sum(i.quantity * i.unit_price for i in self.items), 2)
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+#Endpoints
 
 @app.get("/health")
 async def health():
@@ -193,7 +193,6 @@ async def create_order(
     Header obrigatório: Idempotency-Key (UUID gerado pelo cliente)
     """
     timer = Timer()
-    # key = idempotency_key or str(uuid.uuid4())
     if not idempotency_key:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -201,7 +200,6 @@ async def create_order(
         )
     key = IdempotencyGuard.validate_key(idempotency_key)
 
-    # 1. Verificar estoque no Redis (OCC)
     for item in payload.items:
         available = await _check_stock(item.sku_id, item.quantity)
         if not available:
@@ -218,7 +216,6 @@ async def create_order(
                 detail=f"Estoque insuficiente para SKU {item.sku_id}"
             )
 
-    # 2. Criar pedido com idempotência garantida
     guard = IdempotencyGuard(db_pool)
 
     try:
@@ -241,7 +238,6 @@ async def create_order(
         ORDER_CREATION_TOTAL.labels(result="error").inc()
         raise HTTPException(status_code=500, detail="Erro interno ao criar pedido")
 
-    # 3. Publicar no SQS (assíncrono — não bloqueia resposta)
     asyncio.create_task(_publish_to_sqs(order))
 
     logger.info(
@@ -272,7 +268,7 @@ async def get_order(order_id: str):
     return dict(row)
 
 
-# ── Funções internas ──────────────────────────────────────────────────────────
+#Funções internas 
 
 def _route_template(request: Request) -> str:
     """Retorna o template da rota para evitar cardinalidade alta nas metricas."""
@@ -289,7 +285,6 @@ async def _check_stock(sku_id: str, quantity: int) -> bool:
     """
     raw = await redis_client.get(f"stock:{sku_id}")
     if raw is None:
-        # Cache miss: busca do banco e repopula Redis
         row = await db_pool.fetchrow("SELECT quantity FROM inventory WHERE sku_id = $1", sku_id)
         if not row:
             STOCK_CHECK_TOTAL.labels(result="not_found").inc()
@@ -307,7 +302,7 @@ async def _check_stock(sku_id: str, quantity: int) -> bool:
     return False
 
 
-# apenas usar a conexão recebida:
+#conexão recebida
 async def _persist_order(
     conn: asyncpg.Connection,
     payload: CreateOrderRequest,
@@ -380,8 +375,8 @@ async def _publish_to_sqs(order: dict):
             lambda: sqs_client.send_message(
                 QueueUrl=SQS_QUEUE,
                 MessageBody=json.dumps(message),
-                MessageGroupId=order["customer_id"],        # FIFO grouping
-                MessageDeduplicationId=order["id"],         # deduplicação FIFO
+                MessageGroupId=order["customer_id"],      
+                MessageDeduplicationId=order["id"],         
             )
         )
 
@@ -390,7 +385,6 @@ async def _publish_to_sqs(order: dict):
         SQS_PUBLISH_TOTAL.labels(result="success").inc()
         logger.info("order.sqs_published", extra={"order_id": order["id"]})
     except Exception as err:
-        # Falha no SQS não cancela o pedido — o dado já foi salvo no banco
         SQS_PUBLISH_TOTAL.labels(result="error").inc()
         logger.error(
             "order.sqs_publish_failed",

@@ -16,7 +16,7 @@ from fastapi import FastAPI, Request, Header, HTTPException, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
 
-# Imports compartilhados (ajuste o PYTHONPATH ao rodar)
+# Imports compartilhados
 import sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
 
@@ -25,10 +25,10 @@ from shared.idempotency import IdempotencyGuard
 
 logger = get_logger("payment-service")
 
-# ── Configurações (via variáveis de ambiente) ─────────────────────────────────
+# Configurações 
 DB_URL = os.getenv("DATABASE_URL", "postgresql://bebidasadmin:senha@localhost/bebidas")
 
-# ── Recursos globais ──────────────────────────────────────────────────────────
+# Recursos globais
 db_pool: asyncpg.Pool = None
 
 @asynccontextmanager
@@ -40,14 +40,14 @@ async def lifespan(app: FastAPI):
     db_pool = await asyncpg.create_pool(DB_URL, min_size=5, max_size=20)
     logger.info("payment-service.ready")
     
-    yield  # aplicação rodando
+    yield  
 
     await db_pool.close()
     logger.info("payment-service.shutdown")
 
 app = FastAPI(title="Payment Service", lifespan=lifespan)
 
-# ── Middleware: correlation ID propagado a todos os logs ───────────────────────
+# Middleware
 @app.middleware("http")
 async def correlation_middleware(request: Request, call_next):
     correlation_id = request.headers.get("x-correlation-id") or str(uuid.uuid4())
@@ -58,7 +58,7 @@ async def correlation_middleware(request: Request, call_next):
         response.headers["x-correlation-id"] = correlation_id
         return response
 
-# ── Models ────────────────────────────────────────────────────────────────────
+# Models
 class CreatePaymentRequest(BaseModel):
     order_id: str
     amount: float
@@ -71,7 +71,7 @@ class CreatePaymentRequest(BaseModel):
             raise ValueError("Amount deve ser um valor positivo")
         return v
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+# Endpoints 
 
 @app.get("/health")
 async def health():
@@ -133,7 +133,7 @@ async def create_payment(
                 })
     return payment
 
-# ── Funções internas ──────────────────────────────────────────────────────────
+# Funções internas
 
 async def _persist_payment(conn: asyncpg.Connection, payload: CreatePaymentRequest, idempotency_key: str) -> dict:
     payment_id = str(uuid.uuid4())
@@ -147,7 +147,6 @@ async def _persist_payment(conn: asyncpg.Connection, payload: CreatePaymentReque
         payment_id, payload.order_id, payload.amount, payload.provider_ref, idempotency_key, now
     )
 
-    # Retorna o dicionário representando o pagamento inserido
     return {
         "id": payment_id, "order_id": payload.order_id, "amount": payload.amount,
         "status": "completed", "provider_ref": payload.provider_ref, "created_at": now.isoformat()

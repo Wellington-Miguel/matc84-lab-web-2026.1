@@ -8,7 +8,7 @@ WORKDIR /app
 COPY services/inventory/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# ── Imagem final ───────────────────────────────────────────────────────────────
+# Imagem 
 FROM python:3.12-slim AS runner
 
 # Usuário não-root (segurança)
@@ -29,5 +29,4 @@ ENV PYTHONPATH=/app
 
 EXPOSE 8001
 
-# Uvicorn com 2 workers (inventory é menos crítico que order)
 CMD ["uvicorn", "services.inventory.main:app", "--host", "0.0.0.0", "--port", "8001", "--workers", "2"]
