@@ -12,7 +12,6 @@ env:
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
-  # ── Testes ────────────────────────────────────────────────────────────────────
   test:
     name: Testes e Lint
     runs-on: ubuntu-latest
@@ -56,7 +55,7 @@ jobs:
           PYTHONPATH:   .
         run: pytest services/ shared/ -v --tb=short
 
-  # ── Build e Push para ECR ─────────────────────────────────────────────────────
+
   build:
     name: Build Docker → ECR
     runs-on: ubuntu-latest
@@ -100,7 +99,7 @@ jobs:
           docker push $ECR_REGISTRY/bebidas-payment:${{ steps.meta.outputs.tag }}
           docker push $ECR_REGISTRY/bebidas-payment:latest
 
-  # ── Deploy ────────────────────────────────────────────────────────────────────
+  
   deploy:
     name: Deploy → ECS
     runs-on: ubuntu-latest

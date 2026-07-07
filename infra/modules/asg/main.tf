@@ -1,4 +1,4 @@
-# ── Security Group para os Servidores ─────────────────────────────────────────
+# Security Group para os Servidores
 resource "aws_security_group" "asg_sg" {
   name        = "${var.project_name}-asg-sg-${var.environment}"
   description = "Permite trafego web apenas vindo do Application Load Balancer"
@@ -21,7 +21,7 @@ resource "aws_security_group" "asg_sg" {
   tags = { Name = "${var.project_name}-asg-sg" }
 }
 
-# ── IAM Role para acessar Secrets Manager ─────────────────────────────────────
+# IAM Role para acessar Secrets Manager
 resource "aws_iam_role" "asg_role" {
   name = "${var.project_name}-asg-role-${var.environment}"
   assume_role_policy = jsonencode({
@@ -58,7 +58,7 @@ resource "aws_iam_instance_profile" "asg_profile" {
   role = aws_iam_role.asg_role.name
 }
 
-# ── Launch Template e ASG ─────────────────────────────────────────────────────
+# Launch Template e ASG
 data "aws_ssm_parameter" "ecs_optimized_ami" {
   # Pega automaticamente o ID da última imagem oficial da AWS para contêineres
   name = "/aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id"

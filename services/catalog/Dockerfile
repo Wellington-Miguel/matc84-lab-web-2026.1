@@ -7,7 +7,6 @@ WORKDIR /app
 COPY services/catalog/requirements.txt .
 RUN pip install --no-cache-dir --user -r requirements.txt
 
-# ── Imagem final ───────────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runner
 
 RUN groupadd -r app && useradd -r -g app app
@@ -16,7 +15,6 @@ WORKDIR /app
 
 COPY --from=builder /root/.local /home/app/.local
 
-# Copia código
 COPY --chown=app:app shared/ ./shared/
 COPY --chown=app:app services/catalog/ ./services/catalog/
 
