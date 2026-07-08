@@ -14,7 +14,7 @@ class ChaosMiddleware(BaseHTTPMiddleware):
         if not CHAOS_ENABLED:
             return await call_next(request)
 
-        if request.url.path in ["/", "/health", "/ready", "/docs", "/openapi.json"] or "/chaos" in request.url.path:
+        if request.url.path in ["/", "/health", "/ready", "/metrics", "/docs", "/openapi.json"] or "/chaos" in request.url.path:
             return await call_next(request)
 
         if random.random() < CHAOS_LATENCY_RATE:

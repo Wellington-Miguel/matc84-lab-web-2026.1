@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import Response
 
 from app.core.config import settings
 from app.core.database import init_db, close_db
@@ -10,6 +11,7 @@ from app.api.v1 import rotas_produto, rotas_saude, rotas_pedidos
 from app.services.worker_outbox import iniciar_worker_outbox, parar_worker_outbox
 from app.core.chaos import ChaosMiddleware
 from app.core.logging import configurar_logging
+from app.core.metricas import MetricsMiddleware, gerar_metricas
 from app.core.middleware import RequestContextMiddleware
 
 configurar_logging(settings.LOG_LEVEL)
@@ -49,9 +51,19 @@ app.add_middleware(
 )
 
 app.add_middleware(ChaosMiddleware)
-# Added last so it wraps every other middleware: the correlation ID is bound
-# before Chaos runs and access logs capture even chaos-injected failures.
 app.add_middleware(RequestContextMiddleware)
+# Added last so it is the outermost middleware: metrics capture the
+# client-visible latency and status, including anything the chaos middleware
+# injects downstream.
+app.add_middleware(MetricsMiddleware)
+
+
+@app.get("/metrics", include_in_schema=False)
+async def metrics() -> Response:
+    """Expose Prometheus metrics for scraping (golden signals + custom)."""
+    return gerar_metricas()
+
+
 app.include_router(rotas_saude.router)
 app.include_router(rotas_produto.router, prefix=settings.API_V1_STR)
 app.include_router(rotas_pedidos.router, prefix=settings.API_V1_STR)
