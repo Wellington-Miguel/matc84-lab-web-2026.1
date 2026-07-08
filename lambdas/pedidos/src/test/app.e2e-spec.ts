@@ -4,7 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
 import { ORDER_REPOSITORY } from '../src/orders/domain/repositories/order.repository';
-import { ORDER_QUEUE } from '../src/orders/domain/queues/order.queue';
+import { PRODUCT_CATALOG } from '../src/orders/domain/catalog/product-catalog';
 
 describe('OrdersController (e2e)', () => {
   let app: INestApplication<App>;
@@ -19,9 +19,9 @@ describe('OrdersController (e2e)', () => {
         findAll: jest.fn().mockResolvedValue([]),
         findById: jest.fn(),
       })
-      .overrideProvider(ORDER_QUEUE)
+      .overrideProvider(PRODUCT_CATALOG)
       .useValue({
-        publishCreated: jest.fn(),
+        findById: jest.fn(),
       })
       .compile();
 

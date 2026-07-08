@@ -23,6 +23,7 @@ import { ProductService } from '../../application/services/product.service';
 import { CreateProductDto } from '../../application/dto/create-product.dto';
 import { ProductResponseDto } from '../../application/dto/product-response.dto';
 import { UpdateProductDto } from '../../application/dto/update-product.dto';
+import { DebitStockDto } from '../../application/dto/debit-stock.dto';
 
 @ApiTags('Produtos')
 @Controller('produtos')
@@ -49,6 +50,17 @@ export class ProductsController {
   @ApiOkResponse({ type: ProductResponseDto, isArray: true })
   findRecentlyUpdated(): Promise<ProductResponseDto[]> {
     return this.productService.findRecentlyUpdated();
+  }
+
+  @Post('estoque/debitar')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Debitar estoque de produtos' })
+  @ApiNoContentResponse({ description: 'Estoque debitado' })
+  @ApiBadRequestResponse({
+    description: 'Payload invalido, produto inexistente ou estoque insuficiente',
+  })
+  debitStock(@Body() dto: DebitStockDto): Promise<void> {
+    return this.productService.debitStock(dto);
   }
 
   @Get(':id')

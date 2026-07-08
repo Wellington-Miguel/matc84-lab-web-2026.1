@@ -6,7 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["auth", "produtos", "pedidos"]
+  schemas  = ["auth", "produtos", "pedidos", "pagamentos"]
 }
 
 enum OrderStatus {
@@ -55,4 +55,16 @@ model Order {
 
   @@map("orders")
   @@schema("pedidos")
+}
+
+model Payment {
+  id               String   @id @default(uuid())
+  paymentAttemptId String   @map("payment_attempt_id")
+  orderId          String   @map("order_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@index([paymentAttemptId])
+  @@index([orderId])
+  @@map("payments")
+  @@schema("pagamentos")
 }

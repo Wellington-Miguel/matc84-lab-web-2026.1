@@ -3,6 +3,7 @@ import { PrismaService } from '@libs/prisma';
 import { Product } from '../../domain/entities/product.entity';
 import {
   CreateProductInput,
+  DebitStockItemInput,
   ProductRepository,
   UpdateProductInput,
 } from '../../domain/repositories/product.repository';
@@ -67,6 +68,31 @@ export class PrismaProductRepository implements ProductRepository {
     });
 
     return this.toDomain(product);
+  }
+
+  async debitStock(items: DebitStockItemInput[]): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      for (const item of items) {
+        const result = await tx.product.updateMany({
+          where: {
+            id: item.productId,
+            deletedAt: null,
+            amount: {
+              gte: item.quantity,
+            },
+          },
+          data: {
+            amount: {
+              decrement: item.quantity,
+            },
+          },
+        });
+
+        if (result.count !== 1) {
+          throw new Error('Produto inexistente ou estoque insuficiente');
+        }
+      }
+    });
   }
 
   async delete(id: string): Promise<boolean> {

@@ -107,3 +107,60 @@ resource "aws_dynamodb_table" "produtos" {
 
   tags = { Name = "${var.prefix}-produtos" }
 }
+
+# =============================================================================
+# Tabela: tentativas de pagamento
+# PK: attemptId (UUID)
+# GSI TokenIndex: busca da tentativa pelo token enviado ao cliente
+# GSI OrderIdIndex: busca da tentativa mais recente pelo pedido
+# =============================================================================
+resource "aws_dynamodb_table" "payment_attempts" {
+  name         = "${var.prefix}-payment-attempts"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "attemptId"
+
+  attribute {
+    name = "attemptId"
+    type = "S"
+  }
+  attribute {
+    name = "token"
+    type = "S"
+  }
+  attribute {
+    name = "orderId"
+    type = "S"
+  }
+  attribute {
+    name = "createdAt"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "TokenIndex"
+    hash_key        = "token"
+    projection_type = "ALL"
+  }
+
+  global_secondary_index {
+    name            = "OrderIdIndex"
+    hash_key        = "orderId"
+    range_key       = "createdAt"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expiresAt"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  tags = { Name = "${var.prefix}-payment-attempts" }
+}

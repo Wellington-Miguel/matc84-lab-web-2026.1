@@ -80,6 +80,36 @@ const tables = [
       },
     ],
   },
+  {
+    TableName: `${prefix}-payment-attempts`,
+    BillingMode: 'PAY_PER_REQUEST',
+    KeySchema: [{ AttributeName: 'attemptId', KeyType: 'HASH' }],
+    AttributeDefinitions: [
+      { AttributeName: 'attemptId', AttributeType: 'S' },
+      { AttributeName: 'token', AttributeType: 'S' },
+      { AttributeName: 'orderId', AttributeType: 'S' },
+      { AttributeName: 'createdAt', AttributeType: 'S' },
+    ],
+    GlobalSecondaryIndexes: [
+      {
+        IndexName: 'TokenIndex',
+        KeySchema: [{ AttributeName: 'token', KeyType: 'HASH' }],
+        Projection: { ProjectionType: 'ALL' },
+      },
+      {
+        IndexName: 'OrderIdIndex',
+        KeySchema: [
+          { AttributeName: 'orderId', KeyType: 'HASH' },
+          { AttributeName: 'createdAt', KeyType: 'RANGE' },
+        ],
+        Projection: { ProjectionType: 'ALL' },
+      },
+    ],
+    TimeToLiveSpecification: {
+      AttributeName: 'expiresAt',
+      Enabled: true,
+    },
+  },
 ];
 
 async function tableExists(tableName) {

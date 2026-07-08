@@ -212,23 +212,36 @@ module "lambda_pagamentos" {
   log_retention_days = var.log_retention_days
 
   environment_variables = merge(local.lambda_common_env, {
-    SQS_QUEUE_URL          = module.sqs.queue_url
-    DYNAMODB_TABLE_PEDIDOS = module.dynamodb.pedidos_table_name
+    DYNAMODB_TABLE_PEDIDOS                   = module.dynamodb.pedidos_table_name
+    DYNAMODB_TABLE_PAYMENT_ATTEMPTS          = module.dynamodb.payment_attempts_table_name
+    DYNAMODB_PAYMENT_ATTEMPTS_TOKEN_INDEX    = "TokenIndex"
+    DYNAMODB_PAYMENT_ATTEMPTS_ORDER_ID_INDEX = "OrderIdIndex"
   })
 
   policy_statements = [
     {
-      sid       = "SQSSend"
-      actions   = ["sqs:SendMessage", "sqs:GetQueueUrl"]
-      resources = [module.sqs.queue_arn]
+      sid = "DynamoDBPedidosRead"
+      actions = [
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+      ]
+      resources = [
+        module.dynamodb.pedidos_table_arn,
+        "${module.dynamodb.pedidos_table_arn}/index/*",
+      ]
     },
     {
-      sid = "DynamoDBPedidosUpdate"
+      sid = "DynamoDBPaymentAttempts"
       actions = [
+        "dynamodb:PutItem",
         "dynamodb:UpdateItem",
         "dynamodb:GetItem",
+        "dynamodb:Query",
       ]
-      resources = [module.dynamodb.pedidos_table_arn]
+      resources = [
+        module.dynamodb.payment_attempts_table_arn,
+        "${module.dynamodb.payment_attempts_table_arn}/index/*",
+      ]
     },
   ]
 }

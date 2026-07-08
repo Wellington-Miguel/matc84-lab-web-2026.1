@@ -1,11 +1,16 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { OrderStatus } from '@libs/enums';
 import { Order, OrderProduct } from '../../domain/entities/order.entity';
 import { ORDER_REPOSITORY } from '../../domain/repositories/order.repository';
 import type { OrderRepository } from '../../domain/repositories/order.repository';
-import { ORDER_QUEUE } from '../../domain/queues/order.queue';
-import type { OrderQueue } from '../../domain/queues/order.queue';
+import { PRODUCT_CATALOG } from '../../domain/catalog/product-catalog';
+import type { ProductCatalog } from '../../domain/catalog/product-catalog';
 import { CreateOrderDto } from '../dto/create-order.dto';
 
 @Injectable()
@@ -13,17 +18,34 @@ export class OrderService {
   constructor(
     @Inject(ORDER_REPOSITORY)
     private readonly orderRepository: OrderRepository,
-    @Inject(ORDER_QUEUE)
-    private readonly orderQueue: OrderQueue,
+    @Inject(PRODUCT_CATALOG)
+    private readonly productCatalog: ProductCatalog,
   ) {}
 
   async create(dto: CreateOrderDto): Promise<Order> {
-    const products = dto.products.map((product) => ({
-      productId: product.productId,
-      quantity: product.quantity,
-      unitPrice: product.unitPrice,
-      totalPrice: this.roundMoney(product.quantity * product.unitPrice),
-    }));
+    const products = await Promise.all(
+      dto.products.map(async (item) => {
+        const product = await this.productCatalog.findById(item.productId);
+        if (!product) {
+          throw new NotFoundException(
+            `Produto ${item.productId} nao encontrado`,
+          );
+        }
+
+        if (product.amount < item.quantity) {
+          throw new BadRequestException(
+            `Produto ${item.productId} nao possui quantidade suficiente`,
+          );
+        }
+
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: product.price,
+          totalPrice: this.roundMoney(item.quantity * product.price),
+        };
+      }),
+    );
 
     const order = await this.orderRepository.create({
       id: randomUUID(),
@@ -34,7 +56,6 @@ export class OrderService {
       createdAt: new Date(),
     });
 
-    await this.orderQueue.publishCreated(order);
     return order;
   }
 

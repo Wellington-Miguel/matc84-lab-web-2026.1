@@ -2,29 +2,27 @@ import { ApiProperty } from '@nestjs/swagger';
 import {
   ArrayMinSize,
   IsArray,
+  IsInt,
   IsNotEmpty,
-  IsNumber,
   IsPositive,
   IsString,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateOrderProductDto {
-  @ApiProperty({ example: '2f4b8e76-0db8-4d0d-8d1f-4dd4ca9d44ef' })
+  @ApiProperty({ example: '0d8efc91-2f45-4e97-8239-7b87142b7b01' })
   @IsString()
   @IsNotEmpty()
   productId: string;
 
   @ApiProperty({ example: 2 })
-  @IsNumber({ maxDecimalPlaces: 0 })
+  @Type(() => Number)
+  @IsInt()
   @IsPositive()
+  @Min(1)
   quantity: number;
-
-  @ApiProperty({ example: 49.9 })
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @IsPositive()
-  unitPrice: number;
 }
 
 export class CreateOrderDto {
@@ -33,7 +31,20 @@ export class CreateOrderDto {
   @IsNotEmpty()
   clientId: string;
 
-  @ApiProperty({ type: CreateOrderProductDto, isArray: true })
+  @ApiProperty({
+    type: CreateOrderProductDto,
+    isArray: true,
+    example: [
+      {
+        productId: '0d8efc91-2f45-4e97-8239-7b87142b7b01',
+        quantity: 2,
+      },
+      {
+        productId: 'ca4fb8a0-91ff-4ed7-926f-50365f95f6f0',
+        quantity: 1,
+      },
+    ],
+  })
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })

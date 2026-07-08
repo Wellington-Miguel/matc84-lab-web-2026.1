@@ -1,8 +1,14 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Product } from '../../domain/entities/product.entity';
 import { PRODUCT_REPOSITORY } from '../../domain/repositories/product.repository';
 import type { ProductRepository } from '../../domain/repositories/product.repository';
 import { CreateProductDto } from '../dto/create-product.dto';
+import { DebitStockDto } from '../dto/debit-stock.dto';
 import { UpdateProductDto } from '../dto/update-product.dto';
 
 @Injectable()
@@ -40,6 +46,16 @@ export class ProductService {
     }
 
     return product;
+  }
+
+  async debitStock(dto: DebitStockDto): Promise<void> {
+    try {
+      await this.productRepository.debitStock(dto.items);
+    } catch {
+      throw new BadRequestException(
+        'Produto inexistente ou quantidade insuficiente em estoque',
+      );
+    }
   }
 
   async delete(id: string): Promise<void> {

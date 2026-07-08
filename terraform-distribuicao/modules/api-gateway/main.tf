@@ -76,8 +76,9 @@ locals {
     "GET /produtos"                 = { lambda = "produtos", jwt = true }
     "GET /produtos/{produtoId}"     = { lambda = "produtos", jwt = true }
     "PUT /produtos/{produtoId}"     = { lambda = "produtos", jwt = true }
-    "POST /pagamentos"              = { lambda = "pagamentos", jwt = true }
-    "GET /pagamentos/{pagamentoId}" = { lambda = "pagamentos", jwt = true }
+    "POST /pagamentos/realizar-pagamento" = { lambda = "pagamentos", jwt = true }
+    "POST /pagamentos/pagar"              = { lambda = "pagamentos", jwt = true }
+    "GET /pagamentos/{pagamentoId}"       = { lambda = "pagamentos", jwt = true }
   }
 }
 

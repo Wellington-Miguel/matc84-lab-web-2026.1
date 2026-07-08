@@ -1,13 +1,13 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { OrderStatus } from '@libs/enums';
 import { OrderService } from './order.service';
 import { Order } from '../../domain/entities/order.entity';
 import type { OrderRepository } from '../../domain/repositories/order.repository';
-import type { OrderQueue } from '../../domain/queues/order.queue';
+import type { ProductCatalog } from '../../domain/catalog/product-catalog';
 
 describe('OrderService', () => {
   let repository: jest.Mocked<OrderRepository>;
-  let queue: jest.Mocked<OrderQueue>;
+  let productCatalog: jest.Mocked<ProductCatalog>;
   let service: OrderService;
 
   beforeEach(() => {
@@ -16,13 +16,13 @@ describe('OrderService', () => {
       findAll: jest.fn(),
       findById: jest.fn(),
     };
-    queue = {
-      publishCreated: jest.fn(),
+    productCatalog = {
+      findById: jest.fn(),
     };
-    service = new OrderService(repository, queue);
+    service = new OrderService(repository, productCatalog);
   });
 
-  it('creates a pending order and publishes it to the queue', async () => {
+  it('creates a pending order', async () => {
     repository.create.mockImplementation((data) => {
       return Promise.resolve(
         new Order(
@@ -35,6 +35,17 @@ describe('OrderService', () => {
         ),
       );
     });
+    productCatalog.findById
+      .mockResolvedValueOnce({
+        id: 'product-1',
+        price: 10.155,
+        amount: 10,
+      })
+      .mockResolvedValueOnce({
+        id: 'product-2',
+        price: 5,
+        amount: 1,
+      });
 
     const order = await service.create({
       clientId: 'client-1',
@@ -42,12 +53,10 @@ describe('OrderService', () => {
         {
           productId: 'product-1',
           quantity: 2,
-          unitPrice: 10.155,
         },
         {
           productId: 'product-2',
           quantity: 1,
-          unitPrice: 5,
         },
       ],
     });
@@ -75,7 +84,27 @@ describe('OrderService', () => {
         total: 25.31,
       }),
     );
-    expect(queue.publishCreated.mock.calls[0]?.[0]).toBe(order);
+  });
+
+  it('throws when product does not have enough amount', async () => {
+    productCatalog.findById.mockResolvedValue({
+      id: 'product-1',
+      price: 10,
+      amount: 1,
+    });
+
+    await expect(
+      service.create({
+        clientId: 'client-1',
+        products: [
+          {
+            productId: 'product-1',
+            quantity: 2,
+          },
+        ],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.create.mock.calls).toHaveLength(0);
   });
 
   it('throws when order is not found', async () => {

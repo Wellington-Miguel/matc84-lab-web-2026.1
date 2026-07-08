@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { OrderService } from './application/services/order.service';
 import { ORDER_REPOSITORY } from './domain/repositories/order.repository';
-import { ORDER_QUEUE } from './domain/queues/order.queue';
+import { PRODUCT_CATALOG } from './domain/catalog/product-catalog';
 import { OrdersController } from './infrastructure/http/orders.controller';
 import { DynamoDbOrderRepository } from './infrastructure/persistence/dynamodb-order.repository';
-import { SqsOrderQueue } from './infrastructure/queue/sqs-order.queue';
+import { HttpProductCatalog } from './infrastructure/catalog/http-product-catalog';
 
 @Module({
   controllers: [OrdersController],
@@ -15,8 +15,8 @@ import { SqsOrderQueue } from './infrastructure/queue/sqs-order.queue';
       useClass: DynamoDbOrderRepository,
     },
     {
-      provide: ORDER_QUEUE,
-      useClass: SqsOrderQueue,
+      provide: PRODUCT_CATALOG,
+      useClass: HttpProductCatalog,
     },
   ],
 })
