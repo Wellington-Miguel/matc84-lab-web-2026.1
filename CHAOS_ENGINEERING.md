@@ -24,15 +24,21 @@ Foram adicionados três mecanismos de injeção de falhas:
 
 ## Passo a passo para testar
 
-### 1. Subir a aplicação
+### 1. Subir a aplicação com o caos habilitado
 
-Com o ambiente virtual ativado, suba o servidor normalmente:
+O Chaos Engineering vem **desabilitado por padrão** — nenhuma falha é injetada a menos que você o ligue explicitamente. Para os experimentos abaixo, suba o servidor com `CHAOS_ENABLED=true`:
 
 ```bash
-uvicorn app.main:app --reload
+# Linux/macOS
+CHAOS_ENABLED=true uvicorn app.main:app --reload
+
+# Windows (PowerShell)
+$env:CHAOS_ENABLED="true"; uvicorn app.main:app --reload
 ```
 
 O Uvicorn reinicia automaticamente sempre que você salvar alterações nos arquivos.
+
+> Sem `CHAOS_ENABLED=true`, o `ChaosMiddleware` deixa todas as requisições passarem intactas — é o comportamento seguro para qualquer ambiente que não seja um experimento controlado.
 
 ---
 
@@ -126,12 +132,33 @@ curl -i http://localhost:8000/ready
 
 ---
 
-## Configurações do Middleware (ajustáveis em `app/core/chaos.py`)
+## Configurações do Middleware (variáveis de ambiente)
+
+Todas são lidas na inicialização (via `app/core/config.py`) e têm defaults seguros:
 
 | Variável | Valor padrão | Descrição |
 |---|---|---|
-| `CHAOS_ENABLED` | `True` | Liga/desliga todo o middleware |
+| `CHAOS_ENABLED` | `False` | Liga/desliga todo o middleware |
 | `CHAOS_ERROR_RATE` | `0.2` | Probabilidade de erro 500 (20%) |
 | `CHAOS_LATENCY_RATE` | `0.3` | Probabilidade de latência (30%) |
 | `CHAOS_MIN_LATENCY` | `1.0` | Atraso mínimo em segundos |
 | `CHAOS_MAX_LATENCY` | `3.0` | Atraso máximo em segundos |
+
+## Observabilidade do caos
+
+Toda falha injetada é contabilizada na métrica Prometheus **`chaos_faults_injected_total`**, rotulada por tipo, e exposta em `GET /metrics`:
+
+| Rótulo `tipo` | Origem |
+|---|---|
+| `latency` | Atraso injetado pelo `ChaosMiddleware` |
+| `error` | Erro 500 injetado pelo `ChaosMiddleware` |
+| `db_outage` | Queda de banco simulada no `/ready` (`toggle-db`) |
+
+Isso torna o raio de explosão de um experimento visível em tempo real e permite, na análise de error budget, **separar as falhas injetadas das falhas orgânicas** ao interpretar o SLI de disponibilidade.
+
+Exemplo de consulta ao expor as métricas:
+```bash
+curl -s http://localhost:8000/metrics | grep chaos_faults_injected_total
+# chaos_faults_injected_total{tipo="error"} 7.0
+# chaos_faults_injected_total{tipo="latency"} 11.0
+```

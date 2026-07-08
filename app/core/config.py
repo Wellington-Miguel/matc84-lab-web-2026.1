@@ -26,5 +26,13 @@ class Settings:
 
     OUTBOX_WORKER_INTERVAL: int = int(os.getenv("OUTBOX_WORKER_INTERVAL", "5"))
 
+    # Chaos Engineering. Disabled by default so fault injection is never active
+    # unless explicitly enabled (e.g. CHAOS_ENABLED=true) for an experiment.
+    CHAOS_ENABLED: bool = os.getenv("CHAOS_ENABLED", "False").lower() == "true"
+    CHAOS_ERROR_RATE: float = float(os.getenv("CHAOS_ERROR_RATE", "0.2"))
+    CHAOS_LATENCY_RATE: float = float(os.getenv("CHAOS_LATENCY_RATE", "0.3"))
+    CHAOS_MIN_LATENCY: float = float(os.getenv("CHAOS_MIN_LATENCY", "1.0"))
+    CHAOS_MAX_LATENCY: float = float(os.getenv("CHAOS_MAX_LATENCY", "3.0"))
+
 
 settings = Settings()

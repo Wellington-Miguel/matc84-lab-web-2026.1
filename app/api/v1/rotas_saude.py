@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.core.database import get_db
+from app.core.chaos import chaos_faults_injected_total
 
 router = APIRouter(prefix="", tags=["health"])
 
@@ -30,6 +31,7 @@ async def readiness_check(db: Session = Depends(get_db)) -> dict:
     """
     # Chaos injection: forces an outage state in the readiness check
     if SIMULAR_QUEDA_BANCO:
+        chaos_faults_injected_total.labels("db_outage").inc()
         raise HTTPException(
             status_code=503,
             detail="💥 Chaos Engineering: Conexão com o banco de dados perdida (Falha Simulada)!",
