@@ -38,7 +38,7 @@ services:
 
   # ── LocalStack (simula SQS da AWS localmente) ──────────────────────────────
   localstack:
-    image: localstack/localstack:1.4.0
+    image: localstack/localstack:3.5.0
     container_name: bebidas-localstack
     ports:
       - "4566:4566"
@@ -46,6 +46,7 @@ services:
       SERVICES: sqs
       DEBUG: "0"
       DEFAULT_REGION: us-east-1
+      SQS_ENDPOINT_STRATEGY: path
     volumes:
       - "./infra/localstack:/etc/localstack/init/ready.d"
     healthcheck:
@@ -88,10 +89,17 @@ services:
     environment:
       DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
       REDIS_URL: redis://redis:6379
+      SQS_ORDER_QUEUE_URL: http://localstack:4566/000000000000/bebidas-orders.fifo
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     restart: unless-stopped
 
@@ -105,10 +113,12 @@ services:
       - "8002:8002"
     environment:
       DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
-      SQS_NOTIFICATION_QUEUE_URL: http://localstack:4566/000000000000/notifications.fifo
+      SQS_ORDER_QUEUE_URL: http://localstack:4566/000000000000/bebidas-orders.fifo
+      SQS_NOTIFICATION_QUEUE_URL: http://localstack:4566/000000000000/bebidas-orders.fifo
       AWS_DEFAULT_REGION: us-east-1
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
       ENVIRONMENT: development
     depends_on:
       postgres:
@@ -145,8 +155,15 @@ services:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://bebidasadmin:senha_local_dev@postgres:5432/bebidas
+      SQS_ORDER_QUEUE_URL: http://localstack:4566/000000000000/bebidas-orders.fifo
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_ENDPOINT_URL: http://localstack:4566
     depends_on:
       postgres:
+        condition: service_healthy
+      localstack:
         condition: service_healthy
     restart: unless-stopped
 

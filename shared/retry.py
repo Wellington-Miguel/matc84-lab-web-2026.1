@@ -31,7 +31,6 @@ class RetryConfig:
 
 
 class RetryExhaustedError(Exception):
-    """Todas as tentativas falharam."""
     def __init__(self, last_error: Exception, attempts: int):
         self.last_error = last_error
         self.attempts = attempts

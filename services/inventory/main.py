@@ -1,12 +1,16 @@
 import os
 import uuid
+import json
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
 import asyncpg
+import boto3
 import redis.asyncio as aioredis
 from fastapi import FastAPI, Request, Response, HTTPException, status
+from shared.retry import with_retry, RetryConfig
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Gauge, generate_latest
 from pydantic import BaseModel, field_validator
@@ -28,19 +32,28 @@ CONFLITOS_OCC = Counter("occ_conflict_total", "Conflitos OCC", ["id_sku"])
 # Configuração
 URL_BD = os.getenv("DATABASE_URL", "postgresql://bebidasadmin:[REDACTED]@localhost/bebidas")
 URL_REDIS = os.getenv("REDIS_URL", "redis://localhost:6379")
+SQS_QUEUE = os.getenv("SQS_ORDER_QUEUE_URL", os.getenv("SQS_NOTIFICATION_QUEUE_URL", ""))
+AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+LOW_STOCK_THRESHOLD = int(os.getenv("LOW_STOCK_THRESHOLD", "10"))
 
 # Globais
 pool_bd: asyncpg.Pool = None
 cliente_redis: aioredis.Redis = None
+sqs_client = None
 
 
 @asynccontextmanager
 async def ciclo_vida(app: FastAPI):
-    global pool_bd, cliente_redis
+    global pool_bd, cliente_redis, sqs_client
     logger.info("inventory-service.iniciando")
     
     pool_bd = await asyncpg.create_pool(URL_BD, min_size=5, max_size=20)
     cliente_redis = aioredis.from_url(URL_REDIS, decode_responses=True)
+    sqs_client = boto3.client(
+        "sqs",
+        region_name=AWS_REGION,
+        endpoint_url=os.getenv("AWS_ENDPOINT_URL"),
+    )
     
     logger.info("inventory-service.pronto")
     yield
@@ -181,7 +194,10 @@ async def deduzir_estoque(id_produto: str, requisicao: RequisicaoDeduzirEstoque)
                 "id_produto": id_produto, "deduzido": requisicao.quantidade,
                 "restante": nova_quantidade, "tentativa": tentativa, "tempo_ms": cronometro.elapsed_ms
             })
-            
+
+            if nova_quantidade <= LOW_STOCK_THRESHOLD:
+                asyncio.create_task(_publish_low_stock_event(id_produto, nova_quantidade))
+
             return {"id_sku": id_produto, "deduzido": requisicao.quantidade, "restante": nova_quantidade, "versao": nova_versao}
 
         CONFLITOS_OCC.labels(id_sku=id_produto).inc()
@@ -227,3 +243,33 @@ async def _obter_estoque_com_versao(id_produto: str) -> Optional[dict]:
         return {"quantidade": linha["quantity"], "versao": linha["version"]}
 
     return None
+
+
+async def _publish_low_stock_event(sku_id: str, quantity: int):
+    if not SQS_QUEUE:
+        return
+
+    message = {
+        "eventType": "estoque.baixo",
+        "skuId": sku_id,
+        "quantidadeAtual": quantity,
+        "limite": LOW_STOCK_THRESHOLD,
+    }
+
+    async def send():
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: sqs_client.send_message(
+                QueueUrl=SQS_QUEUE,
+                MessageBody=json.dumps(message),
+                MessageGroupId=sku_id,
+                MessageDeduplicationId=f"low-stock-{sku_id}-{quantity}",
+            )
+        )
+
+    try:
+        await with_retry(send, config=RetryConfig(max_attempts=3, base_delay=1.0))
+        logger.info("inventory.low_stock_event_published", extra={"sku_id": sku_id, "quantity": quantity})
+    except Exception as err:
+        logger.error("inventory.low_stock_event_failed", extra={"sku_id": sku_id, "error": str(err)})

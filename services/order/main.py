@@ -33,60 +33,64 @@ from shared.retry import with_retry, RetryConfig
 
 logger = get_logger("order-service")
 
-HTTP_REQUESTS_TOTAL = Counter(
+REQUISICOES_HTTP_TOTAL = Counter(
     "http_requests_total",
     "Total de requisicoes HTTP recebidas pelo servico.",
     ["method", "path", "status"],
 )
-HTTP_REQUEST_DURATION_SECONDS = Histogram(
+DURACAO_REQUISICOES_SEGUNDOS = Histogram(
     "http_request_duration_seconds",
     "Duracao das requisicoes HTTP em segundos.",
     ["method", "path"],
 )
-ORDER_CREATION_TOTAL = Counter(
+CRIACAO_PEDIDOS_TOTAL = Counter(
     "order_creation_total",
     "Total de tentativas de criacao de pedido por resultado.",
     ["result"],
 )
-STOCK_CHECK_TOTAL = Counter(
+VERIFICACAO_ESTOQUE_TOTAL = Counter(
     "stock_check_total",
     "Total de verificacoes de estoque por resultado.",
     ["result"],
 )
-SQS_PUBLISH_TOTAL = Counter(
+PUBLICACAO_SQS_TOTAL = Counter(
     "sqs_publish_total",
     "Total de publicacoes de pedidos no SQS por resultado.",
     ["result"],
 )
 
 # Configurações
-DB_URL       = os.getenv("DATABASE_URL", "postgresql://bebidasadmin:senha@localhost/bebidas")
-REDIS_URL    = os.getenv("REDIS_URL", "redis://localhost:6379")
-SQS_QUEUE    = os.getenv("SQS_ORDER_QUEUE_URL", "")
-AWS_REGION   = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+URL_BD       = os.getenv("DATABASE_URL", "postgresql://bebidasadmin:senha@localhost/bebidas")
+URL_REDIS    = os.getenv("REDIS_URL", "redis://localhost:6379")
+FILA_SQS     = os.getenv("SQS_ORDER_QUEUE_URL", "")
+REGIAO_AWS   = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 
 #Recursos globais
-db_pool: asyncpg.Pool = None
-redis_client: aioredis.Redis = None
-sqs_client = None
+pool_bd: asyncpg.Pool = None
+cliente_redis: aioredis.Redis = None
+cliente_sqs = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializa e encerra conexões ao subir/derrubar o serviço."""
-    global db_pool, redis_client, sqs_client
+    global pool_bd, cliente_redis, cliente_sqs
 
     logger.info("order-service.starting")
 
-    db_pool = await asyncpg.create_pool(DB_URL, min_size=5, max_size=20)
-    redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-    sqs_client = boto3.client("sqs", region_name=AWS_REGION)
+    pool_bd = await asyncpg.create_pool(URL_BD, min_size=5, max_size=20)
+    cliente_redis = aioredis.from_url(URL_REDIS, decode_responses=True)
+    cliente_sqs = boto3.client(
+        "sqs",
+        region_name=REGIAO_AWS,
+        endpoint_url=os.getenv("AWS_ENDPOINT_URL"),
+    )
 
     logger.info("order-service.ready")
     yield  
 
-    await db_pool.close()
-    await redis_client.close()
+    await pool_bd.close()
+    await cliente_redis.close()
     logger.info("order-service.shutdown")
 
 
@@ -95,76 +99,80 @@ app = FastAPI(title="Order Service", lifespan=lifespan)
 
 # Middleware
 @app.middleware("http")
-async def correlation_middleware(request: Request, call_next):
-    correlation_id = request.headers.get("x-correlation-id") or str(uuid.uuid4())
-    request_id = str(uuid.uuid4())
-    timer = Timer()
-    status_code = 500
+async def middleware_correlacao(requisicao: Request, proximo):
+    id_correlacao = requisicao.headers.get("x-correlation-id") or str(uuid.uuid4())
+    id_requisicao = str(uuid.uuid4())
+    cronometro = Timer()
+    codigo_status = 500
 
-    with LogContext(correlation_id=correlation_id, request_id=request_id):
+    with LogContext(correlation_id=id_correlacao, request_id=id_requisicao):
         try:
-            response = await call_next(request)
-            status_code = response.status_code
-            response.headers["x-correlation-id"] = correlation_id
-            return response
+            resposta = await proximo(requisicao)
+            codigo_status = resposta.status_code
+            resposta.headers["x-correlation-id"] = id_correlacao
+            return resposta
         finally:
-            path = _route_template(request)
-            if path != "/metrics":
-                HTTP_REQUESTS_TOTAL.labels(
-                    method=request.method,
-                    path=path,
-                    status=str(status_code),
+            caminho = _route_template(requisicao)
+            if caminho != "/metrics":
+                REQUISICOES_HTTP_TOTAL.labels(
+                    method=requisicao.method,
+                    path=caminho,
+                    status=str(codigo_status),
                 ).inc()
-                HTTP_REQUEST_DURATION_SECONDS.labels(
-                    method=request.method,
-                    path=path,
-                ).observe(timer.elapsed_ms / 1000)
+                DURACAO_REQUISICOES_SEGUNDOS.labels(
+                    method=requisicao.method,
+                    path=caminho,
+                ).observe(cronometro.elapsed_ms / 1000)
 
 
 # Models
-class OrderItem(BaseModel):
+class ItemPedido(BaseModel):
     sku_id: str
     quantity: int
     unit_price: float
 
     @field_validator("quantity")
     @classmethod
-    def quantity_positive(cls, v):
+    def quantidade_positiva(cls, v):
         if v <= 0:
             raise ValueError("Quantidade deve ser positiva")
         return v
 
     @field_validator("unit_price")
     @classmethod
-    def price_positive(cls, v):
+    def preco_positivo(cls, v):
         if v <= 0:
             raise ValueError("Unit price deve ser positivo")
         return v
 
 
-class CreateOrderRequest(BaseModel):
+class RequisicaoCriarPedido(BaseModel):
     customer_id: str
-    items: list[OrderItem]
+    items: list[ItemPedido]
 
     @property
     def total(self) -> float:
         return round(sum(i.quantity * i.unit_price for i in self.items), 2)
 
 
+CreateOrderRequest = RequisicaoCriarPedido
+OrderItem = ItemPedido
+
+
 #Endpoints
 
 @app.get("/health")
-async def health():
+async def verificacao_saude():
     """Health check do ALB — deve responder 200 em < 5s."""
     checks = {}
     try:
-        await db_pool.fetchval("SELECT 1")
+        await pool_bd.fetchval("SELECT 1")
         checks["db"] = "ok"
     except Exception:
         checks["db"] = "error"
 
     try:
-        await redis_client.ping()
+        await cliente_redis.ping()
         checks["redis"] = "ok"
     except Exception:
         checks["redis"] = "error"
@@ -177,33 +185,33 @@ async def health():
 
 
 @app.get("/metrics")
-async def metrics():
+async def metricas():
     """Endpoint de scrape do Prometheus."""
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.post("/orders", status_code=status.HTTP_201_CREATED)
-async def create_order(
-    payload: CreateOrderRequest,
-    idempotency_key: Optional[str] = Header(None, alias="idempotency-key"),
+async def criar_pedido(
+    requisicao: RequisicaoCriarPedido,
+    chave_idempotencia: Optional[str] = Header(None, alias="idempotency-key"),
 ):
     """
     Cria um pedido com garantia de execução única.
 
     Header obrigatório: Idempotency-Key (UUID gerado pelo cliente)
     """
-    timer = Timer()
-    if not idempotency_key:
+    cronometro = Timer()
+    if not chave_idempotencia:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Header idempotency-key é obrigatório"
         )
-    key = IdempotencyGuard.validate_key(idempotency_key)
+    chave = IdempotencyGuard.validate_key(chave_idempotencia)
 
-    for item in payload.items:
-        available = await _check_stock(item.sku_id, item.quantity)
-        if not available:
-            ORDER_CREATION_TOTAL.labels(result="stock_insufficient").inc()
+    for item in requisicao.items:
+        disponivel = await _verificar_estoque(item.sku_id, item.quantity)
+        if not disponivel:
+            CRIACAO_PEDIDOS_TOTAL.labels(result="stock_insufficient").inc()
             logger.warning(
                 "order.stock_insufficient",
                 extra={
@@ -216,14 +224,14 @@ async def create_order(
                 detail=f"Estoque insuficiente para SKU {item.sku_id}"
             )
 
-    guard = IdempotencyGuard(db_pool)
+    guard = IdempotencyGuard(pool_bd)
 
     try:
-        order = await guard.execute(
-            key=key,
-            operation=lambda conn: _persist_order(
+        pedido = await guard.execute(
+            key=chave,
+            operation=lambda conn: _persistir_pedido(
                 conn,
-                payload,
+                requisicao,
             ),
         )
     except Exception as err:
@@ -231,41 +239,41 @@ async def create_order(
             "order.create_failed",
             extra={
                 "error_type": type(err).__name__,
-                "execution_ms": timer.elapsed_ms,
+                "execution_ms": cronometro.elapsed_ms,
                 "status": "error",
             },
         )
-        ORDER_CREATION_TOTAL.labels(result="error").inc()
+        CRIACAO_PEDIDOS_TOTAL.labels(result="error").inc()
         raise HTTPException(status_code=500, detail="Erro interno ao criar pedido")
 
-    asyncio.create_task(_publish_to_sqs(order))
+    asyncio.create_task(_publicar_na_sqs(pedido))
 
     logger.info(
         "order.created",
         extra={
-            "order_id": order["id"],
-            "customer_id": payload.customer_id,
-            "total": payload.total,
-            "execution_ms": timer.elapsed_ms,
+            "order_id": pedido["id"],
+            "customer_id": requisicao.customer_id,
+            "total": requisicao.total,
+            "execution_ms": cronometro.elapsed_ms,
             "status": "success",
         },
     )
-    ORDER_CREATION_TOTAL.labels(result="success").inc()
+    CRIACAO_PEDIDOS_TOTAL.labels(result="success").inc()
 
-    return order
+    return pedido
 
 
 @app.get("/orders/{order_id}")
-async def get_order(order_id: str):
+async def obter_pedido(order_id: str):
     """Busca pedido por ID — lê da réplica de leitura."""
-    row = await db_pool.fetchrow(
+    linha = await pool_bd.fetchrow(
         "SELECT * FROM orders WHERE id = $1",
         order_id,
     )
-    if not row:
+    if not linha:
         raise HTTPException(status_code=404, detail="Pedido não encontrado")
 
-    return dict(row)
+    return dict(linha)
 
 
 #Funções internas 
@@ -278,34 +286,34 @@ def _route_template(request: Request) -> str:
     return request.url.path
 
 
-async def _check_stock(sku_id: str, quantity: int) -> bool:
+async def _verificar_estoque(sku_id: str, quantity: int) -> bool:
     """
     Verifica estoque no Redis (Data Grid do SBA).
     TTL curto (30s) para inventário — aceitamos consistência eventual aqui.
     """
-    raw = await redis_client.get(f"stock:{sku_id}")
+    raw = await cliente_redis.get(f"stock:{sku_id}")
     if raw is None:
-        row = await db_pool.fetchrow("SELECT quantity FROM inventory WHERE sku_id = $1", sku_id)
-        if not row:
-            STOCK_CHECK_TOTAL.labels(result="not_found").inc()
+        linha = await pool_bd.fetchrow("SELECT quantity FROM inventory WHERE sku_id = $1", sku_id)
+        if not linha:
+            VERIFICACAO_ESTOQUE_TOTAL.labels(result="not_found").inc()
             return False
-        stock = row["quantity"]
-        await redis_client.setex(f"stock:{sku_id}", 30, str(stock))
+        stock = linha["quantity"]
+        await cliente_redis.setex(f"stock:{sku_id}", 30, str(stock))
     else:
         stock = int(raw)
 
     if stock >= quantity:
-        STOCK_CHECK_TOTAL.labels(result="available").inc()
+        VERIFICACAO_ESTOQUE_TOTAL.labels(result="available").inc()
         return True
 
-    STOCK_CHECK_TOTAL.labels(result="insufficient").inc()
+    VERIFICACAO_ESTOQUE_TOTAL.labels(result="insufficient").inc()
     return False
 
 
 #conexão recebida
-async def _persist_order(
+async def _persistir_pedido(
     conn: asyncpg.Connection,
-    payload: CreateOrderRequest,
+    requisicao: RequisicaoCriarPedido,
 ) -> dict:
     """
     Persiste o pedido usando uma conexão já aberta
@@ -323,12 +331,12 @@ async def _persist_order(
             ($1, $2, $3, 'pending', $4)
         """,
         order_id,
-        payload.customer_id,
-        payload.total,
+        requisicao.customer_id,
+        requisicao.total,
         now,
     )
 
-    for item in payload.items:
+    for item in requisicao.items:
 
         await conn.execute(
             """
@@ -345,48 +353,48 @@ async def _persist_order(
 
     return {
         "id": order_id,
-        "customer_id": payload.customer_id,
-        "total": payload.total,
+        "customer_id": requisicao.customer_id,
+        "total": requisicao.total,
         "status": "pending",
         "created_at": now.isoformat(),
     }
 
 
-async def _publish_to_sqs(order: dict):
+async def _publicar_na_sqs(pedido: dict):
     """
     Publica pedido no SQS para processamento assíncrono (Data Pump).
     Usa retry com backoff para garantir entrega.
     """
-    if not SQS_QUEUE:
-        SQS_PUBLISH_TOTAL.labels(result="skipped").inc()
+    if not FILA_SQS:
+        PUBLICACAO_SQS_TOTAL.labels(result="skipped").inc()
         return
 
     message = {
-        "orderId": order["id"],
-        "customerId": order["customer_id"],
-        "total": order["total"],
-        "idempotencyKey": str(uuid.uuid4()),
+        "eventType": "pedido.criado",
+        "pedidoId": pedido["id"],
+        "clienteId": pedido["customer_id"],
+        "total": pedido["total"],
     }
 
     async def send():
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
-            lambda: sqs_client.send_message(
-                QueueUrl=SQS_QUEUE,
+            lambda: cliente_sqs.send_message(
+                QueueUrl=FILA_SQS,
                 MessageBody=json.dumps(message),
-                MessageGroupId=order["customer_id"],      
-                MessageDeduplicationId=order["id"],         
+                MessageGroupId=pedido["customer_id"],      
+                MessageDeduplicationId=pedido["id"],         
             )
         )
 
     try:
         await with_retry(send, config=RetryConfig(max_attempts=3, base_delay=1.0))
-        SQS_PUBLISH_TOTAL.labels(result="success").inc()
-        logger.info("order.sqs_published", extra={"order_id": order["id"]})
+        PUBLICACAO_SQS_TOTAL.labels(result="success").inc()
+        logger.info("order.sqs_published", extra={"order_id": pedido["id"]})
     except Exception as err:
-        SQS_PUBLISH_TOTAL.labels(result="error").inc()
+        PUBLICACAO_SQS_TOTAL.labels(result="error").inc()
         logger.error(
             "order.sqs_publish_failed",
-            extra={"order_id": order["id"], "error": str(err)},
+            extra={"order_id": pedido["id"], "error": str(err)},
         )

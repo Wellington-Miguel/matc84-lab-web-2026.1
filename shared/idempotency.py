@@ -13,7 +13,6 @@ import asyncpg
 
 
 class DuplicateRequestError(Exception):
-    """A requisição já foi processada — retorna resultado anterior."""
     def __init__(self, cached_result: Any):
         self.cached_result = cached_result
         super().__init__("Requisição já processada (idempotência)")
@@ -36,12 +35,6 @@ class IdempotencyGuard:
         operation: Callable[[asyncpg.Connection], Awaitable[Any]],
         ttl_hours: int = 24,
     ) -> Any:
-        """
-        Executa `operation` exatamente uma vez para a `key` dada.
-
-        Se a chave já existir → retorna resultado anterior (sem re-executar).
-        Se não existir → executa, persiste chave+resultado atomicamente.
-        """
         key = self.validate_key(key)
 
         async with self._pool.acquire() as conn:
@@ -65,7 +58,7 @@ class IdempotencyGuard:
                 )
 
                 if row:
-                    return json.loads(row["result"])
+                    raise DuplicateRequestError(cached_result=json.loads(row["result"]))
                 
                 await conn.execute(
                     """

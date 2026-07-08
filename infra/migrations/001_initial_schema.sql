@@ -1,10 +1,9 @@
 -- migrations/001_initial_schema.sql
--- Executar uma vez na criação do banco (ou via Flyway/Alembic)
 
--- ── Extensões ─────────────────────────────────────────────────────────────────
+--  Extensões 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";  -- gen_random_uuid()
 
--- ── Clientes ──────────────────────────────────────────────────────────────────
+--  Clientes 
 CREATE TABLE IF NOT EXISTS customers (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email      VARCHAR(255) UNIQUE NOT NULL,
@@ -12,7 +11,7 @@ CREATE TABLE IF NOT EXISTS customers (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Produtos / Catálogo ───────────────────────────────────────────────────────
+--  Produtos / Catálogo 
 CREATE TABLE IF NOT EXISTS products (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sku         VARCHAR(100) UNIQUE NOT NULL,
@@ -23,7 +22,7 @@ CREATE TABLE IF NOT EXISTS products (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Estoque ───────────────────────────────────────────────────────────────────
+--  Estoque 
 CREATE TABLE IF NOT EXISTS inventory (
     sku_id      UUID PRIMARY KEY REFERENCES products(id),
     quantity    INT NOT NULL DEFAULT 0 CHECK (quantity >= 0),
@@ -31,7 +30,7 @@ CREATE TABLE IF NOT EXISTS inventory (
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Pedidos ───────────────────────────────────────────────────────────────────
+--  Pedidos 
 CREATE TABLE IF NOT EXISTS orders (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     customer_id     UUID NOT NULL REFERENCES customers(id),
@@ -46,7 +45,7 @@ CREATE INDEX idx_orders_customer ON orders(customer_id);
 CREATE INDEX idx_orders_status   ON orders(status);
 CREATE INDEX idx_orders_created  ON orders(created_at DESC);
 
--- ── Itens do Pedido ───────────────────────────────────────────────────────────
+--  Itens do Pedido 
 CREATE TABLE IF NOT EXISTS order_items (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id    UUID NOT NULL REFERENCES orders(id),
@@ -57,7 +56,7 @@ CREATE TABLE IF NOT EXISTS order_items (
 
 CREATE INDEX idx_order_items_order ON order_items(order_id);
 
--- ── Chaves de Idempotência (protocolo Check-then-Act) ─────────────────────────
+--  Chaves de Idempotência (protocolo Check-then-Act) 
 -- CRÍTICO: esta tabela evita cobranças duplicadas e pedidos em duplicidade.
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     key        VARCHAR(255) PRIMARY KEY,
@@ -69,7 +68,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 -- Índice para limpeza automática de chaves expiradas
 CREATE INDEX idx_idempotency_expires ON idempotency_keys(expires_at);
 
--- ── Pagamentos ────────────────────────────────────────────────────────────────
+--  Pagamentos 
 CREATE TABLE IF NOT EXISTS payments (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id        UUID NOT NULL REFERENCES orders(id),
@@ -80,7 +79,7 @@ CREATE TABLE IF NOT EXISTS payments (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- ── Trigger: atualiza updated_at automaticamente ──────────────────────────────
+--  Trigger
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -93,5 +92,4 @@ CREATE TRIGGER orders_updated_at
     BEFORE UPDATE ON orders
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- ── Limpeza de chaves expiradas (rode via pg_cron ou Lambda agendado) ─────────
--- DELETE FROM idempotency_keys WHERE expires_at < NOW();
+

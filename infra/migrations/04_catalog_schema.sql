@@ -23,6 +23,16 @@ CREATE TABLE IF NOT EXISTS products (
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'category_id') THEN
+        ALTER TABLE products ADD COLUMN category_id UUID REFERENCES categories(id) ON DELETE SET NULL;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'products' AND column_name = 'is_active') THEN
+        ALTER TABLE products ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT true;
+    END IF;
+END $$;
+
 -- Índices para performance
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(LOWER(sku));
 CREATE INDEX IF NOT EXISTS idx_products_name ON products(LOWER(name));

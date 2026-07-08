@@ -22,8 +22,6 @@ _request_id: ContextVar[str] = ContextVar("request_id", default="")
 
 
 class JsonFormatter(logging.Formatter):
-    """Formata todos os logs como JSON de uma linha (para CloudWatch)."""
-
     def format(self, record: logging.LogRecord) -> str:
         log_entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -54,7 +52,6 @@ class JsonFormatter(logging.Formatter):
 
 
 def get_logger(service_name: str) -> logging.Logger:
-    """Retorna logger configurado com formatter JSON."""
     logger = logging.getLogger(service_name)
     if not logger.handlers:
         handler = logging.StreamHandler()
@@ -96,8 +93,6 @@ class LogContext:
 
 
 class Timer:
-    """Cronômetro simples para medir execution_ms."""
-
     def __init__(self):
         self._start = time.monotonic()
 

@@ -8,7 +8,7 @@ from typing import Optional
 
 import asyncpg
 import boto3
-from fastapi import FastAPI, Request, Response, HTTPException, status, TarefasBackground
+from fastapi import FastAPI, Request, Response, HTTPException, status, BackgroundTasks
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, Gauge, generate_latest
 from pydantic import BaseModel, field_validator, EmailStr
@@ -30,8 +30,9 @@ EVENTOS_SQS = Counter("sqs_events_processed_total", "Eventos SQS processados", [
 
 # Configuração
 URL_BD = os.getenv("DATABASE_URL", "postgresql://bebidasadmin:[REDACTED]@localhost/bebidas")
-URL_FILA_SQS = os.getenv("SQS_NOTIFICATION_QUEUE_URL", "http://localstack:4566/000000000000/notifications.fifo")
+URL_FILA_SQS = os.getenv("SQS_NOTIFICATION_QUEUE_URL") or os.getenv("SQS_ORDER_QUEUE_URL", "http://localstack:4566/000000000000/bebidas-orders.fifo")
 REGIAO_AWS = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+AWS_ENDPOINT_URL = os.getenv("AWS_ENDPOINT_URL", "http://localstack:4566")
 AMBIENTE = os.getenv("ENVIRONMENT", "desenvolvimento")
 EMAIL_DE = os.getenv("EMAIL_FROM", "noreply@bebidas.local")
 SMS_DE = os.getenv("SMS_FROM", "+55 11 9999-9999")
@@ -48,7 +49,11 @@ async def ciclo_vida(app: FastAPI):
     logger.info("notification-service.iniciando", extra={"ambiente": AMBIENTE})
     
     pool_bd = await asyncpg.create_pool(URL_BD, min_size=5, max_size=20)
-    cliente_sqs = boto3.client("sqs", region_name=REGIAO_AWS)
+    cliente_sqs = boto3.client(
+        "sqs",
+        region_name=REGIAO_AWS,
+        endpoint_url=AWS_ENDPOINT_URL,
+    )
     tarefa_consumidor = asyncio.create_task(_loop_consumidor_sqs())
     
     logger.info("notification-service.pronto")
@@ -145,7 +150,7 @@ async def metricas():
 
 
 @app.post("/notificacoes/enviar", status_code=202)
-async def enviar_notificacao(requisicao: RequisicaoEnviarNotificacao, tarefas: TarefasBackground):
+async def enviar_notificacao(requisicao: RequisicaoEnviarNotificacao, tarefas: BackgroundTasks):
     cronometro = Timer()
     id_notificacao = str(uuid.uuid4())
 
