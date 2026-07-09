@@ -73,6 +73,8 @@ curl -X POST http://localhost:8000/chaos/toggle-db
 {"message": "O ataque de caos ao banco de dados foi ATIVADO!"}
 ```
 
+> Este endpoint é **recusado com HTTP 403** se `CHAOS_ENABLED` não estiver habilitado — a queda de banco só pode ser armada durante um experimento explicitamente ligado, nunca por acidente num ambiente real.
+
 ---
 
 ### 4. Verificar o impacto no health check de prontidão

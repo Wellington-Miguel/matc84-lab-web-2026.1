@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.core.database import get_db
-from app.core.chaos import chaos_faults_injected_total
+import app.core.chaos as chaos
 
 router = APIRouter(prefix="", tags=["health"])
 
@@ -29,9 +29,11 @@ async def readiness_check(db: Session = Depends(get_db)) -> dict:
     Verifies that the service is ready to accept traffic.
     Checks database connectivity and outbox worker status.
     """
-    # Chaos injection: forces an outage state in the readiness check
-    if SIMULAR_QUEDA_BANCO:
-        chaos_faults_injected_total.labels("db_outage").inc()
+    # Chaos injection: forces an outage state in the readiness check. Gated by
+    # CHAOS_ENABLED so it can only fire during an explicitly enabled experiment
+    # — the same "safe by default" guarantee as the ChaosMiddleware.
+    if chaos.CHAOS_ENABLED and SIMULAR_QUEDA_BANCO:
+        chaos.chaos_faults_injected_total.labels("db_outage").inc()
         raise HTTPException(
             status_code=503,
             detail="💥 Chaos Engineering: Conexão com o banco de dados perdida (Falha Simulada)!",
@@ -59,7 +61,16 @@ async def toggle_db_chaos() -> dict:
     Administrative endpoint to toggle the database failure injection.
     
     Allows testing downstream circuit breakers and load balancer behavior dynamically.
+
+    Refused unless chaos is explicitly enabled (CHAOS_ENABLED), so the outage
+    cannot be triggered on a real deployment via this unauthenticated endpoint.
     """
+    if not chaos.CHAOS_ENABLED:
+        raise HTTPException(
+            status_code=403,
+            detail="Chaos Engineering está desabilitado (defina CHAOS_ENABLED para habilitar).",
+        )
+
     global SIMULAR_QUEDA_BANCO
     SIMULAR_QUEDA_BANCO = not SIMULAR_QUEDA_BANCO
     status = "ATIVADO" if SIMULAR_QUEDA_BANCO else "DESATIVADO"
