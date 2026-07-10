@@ -47,3 +47,14 @@ class ProdutoListResponse(BaseModel):
     pagina: int
     tamanho_pagina: int
     itens: list[ProdutoRead]
+
+
+class RelatorioBaixoEstoqueResponse(BaseModel):
+    """Response schema for the low-stock report.
+
+    Lists every product whose available stock is at or below ``limite``,
+    ordered from the most critical (lowest stock) to the least critical.
+    """
+    limite: int
+    total: int
+    itens: list[ProdutoRead]

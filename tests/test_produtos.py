@@ -50,6 +50,49 @@ class TestListarProdutos:
         assert response.status_code == 422  # Validation error
 
 
+class TestRelatorioBaixoEstoque:
+    """Tests for GET /api/v1/produtos/baixo-estoque endpoint"""
+
+    def test_baixo_estoque_vazio(self, client: TestClient):
+        """No products in the database -> empty report"""
+        response = client.get("/api/v1/produtos/baixo-estoque")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["itens"] == []
+
+    def test_baixo_estoque_usa_limite_customizado(self, client: TestClient, sample_produtos):
+        """Only products at or below the given `limite` should be returned"""
+        response = client.get("/api/v1/produtos/baixo-estoque?limite=120")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["limite"] == 120
+        assert data["total"] == 1
+        assert data["itens"][0]["nome"] == "Cerveja Premium"
+
+    def test_baixo_estoque_ordenado_por_estoque_ascendente(
+        self, client: TestClient, sample_produtos
+    ):
+        """Results should be sorted with the most critical (lowest) stock first"""
+        response = client.get("/api/v1/produtos/baixo-estoque?limite=500")
+        assert response.status_code == 200
+        itens = response.json()["itens"]
+        estoques = [item["estoque_disponivel"] for item in itens]
+        assert estoques == sorted(estoques)
+
+    def test_baixo_estoque_nao_altera_estoque(self, client: TestClient, sample_produtos):
+        """The report is read-only: calling it must not change stock levels"""
+        antes = client.get(f"/api/v1/produtos/{sample_produtos[0].id}").json()
+        client.get("/api/v1/produtos/baixo-estoque?limite=1000")
+        depois = client.get(f"/api/v1/produtos/{sample_produtos[0].id}").json()
+        assert antes["estoque_disponivel"] == depois["estoque_disponivel"]
+
+    def test_baixo_estoque_limite_negativo_invalido(self, client: TestClient):
+        """`limite` must be >= 0"""
+        response = client.get("/api/v1/produtos/baixo-estoque?limite=-1")
+        assert response.status_code == 422
+
+
 class TestObterProduto:
     """Tests for GET /api/v1/produtos/{id} endpoint"""
 

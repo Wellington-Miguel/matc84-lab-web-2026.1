@@ -5,7 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.produto import Produto
-from app.schemas.produto_schema import ProdutoRead, ProdutoListResponse
+from app.schemas.produto_schema import (
+    ProdutoRead,
+    ProdutoListResponse,
+    RelatorioBaixoEstoqueResponse,
+)
 from app.core.config import settings
 
 router = APIRouter(prefix="/produtos", tags=["produtos"])
@@ -43,6 +47,41 @@ async def listar_produtos(
         total=total,
         pagina=skip // limit + 1 if limit > 0 else 1,
         tamanho_pagina=limit,
+        itens=[ProdutoRead.model_validate(p) for p in produtos],
+    )
+
+
+@router.get("/baixo-estoque", response_model=RelatorioBaixoEstoqueResponse)
+async def relatorio_baixo_estoque(
+    limite: int = Query(
+        settings.LIMITE_ESTOQUE_BAIXO_PADRAO,
+        ge=0,
+        description="Considera em baixo estoque todo produto com estoque <= limite.",
+    ),
+    db: Session = Depends(get_db),
+) -> RelatorioBaixoEstoqueResponse:
+    """
+    Low-stock report.
+
+    Returns every product whose available stock is at or below `limite`,
+    sorted ascending by stock (most critical first). Intended as a simple
+    read-only alert for restocking decisions — it does not reserve, alter,
+    or lock any inventory, it only reports the current snapshot.
+
+    Note: this route is declared before `/{produto_id}` so that
+    "/produtos/baixo-estoque" is matched here instead of being interpreted
+    as a (non-numeric) product id.
+    """
+    produtos = (
+        db.query(Produto)
+        .filter(Produto.estoque_disponivel <= limite)
+        .order_by(Produto.estoque_disponivel.asc())
+        .all()
+    )
+
+    return RelatorioBaixoEstoqueResponse(
+        limite=limite,
+        total=len(produtos),
         itens=[ProdutoRead.model_validate(p) for p in produtos],
     )
 

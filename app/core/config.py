@@ -24,6 +24,10 @@ class Settings:
     DEFAULT_PAGE_SIZE: int = 20
     MAX_PAGE_SIZE: int = 100
 
+    # Default threshold (inclusive) used by the low-stock report endpoint
+    # (GET /produtos/baixo-estoque) when the caller doesn't pass `limite`.
+    LIMITE_ESTOQUE_BAIXO_PADRAO: int = int(os.getenv("LIMITE_ESTOQUE_BAIXO_PADRAO", "10"))
+
     OUTBOX_WORKER_INTERVAL: int = int(os.getenv("OUTBOX_WORKER_INTERVAL", "5"))
 
     # Chaos Engineering. Disabled by default so fault injection is never active
