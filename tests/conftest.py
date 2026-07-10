@@ -1,8 +1,15 @@
 """Pytest configuration and fixtures for integration testing"""
 
 import os
+
+# Must be set before any `app.*` module is imported: app.core.database builds
+# its engine from settings.DATABASE_URL at import time. Without this, the
+# FastAPI lifespan (triggered by TestClient as a context manager) would try
+# to reach the real Postgres from docker-compose instead of a test database.
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
 from fastapi.testclient import TestClient
 
@@ -35,10 +42,28 @@ def engine():
 
 @pytest.fixture(scope="function")
 def db_session(engine):
-    """Create a fresh database session for each test"""
+    """Create a fresh database session for each test.
+
+    Application code (e.g. criar_pedido, store_idempotency_result) calls
+    session.commit()/rollback() internally. Joining the session to the outer
+    transaction via a SAVEPOINT (and restarting it after each inner
+    commit/rollback) lets those internal calls behave like real checkpoints
+    within the test, while the outer transaction still discards everything
+    at teardown. Without this, an inner rollback (e.g. a duplicate
+    idempotency key) would also wipe out earlier, already-"committed" data
+    from the same test.
+    """
     connection = engine.connect()
     transaction = connection.begin()
     session = sessionmaker(autocommit=False, autoflush=False, bind=connection)()
+
+    nested = connection.begin_nested()
+
+    @event.listens_for(session, "after_transaction_end")
+    def _restart_savepoint(sess, trans):
+        nonlocal nested
+        if not nested.is_active:
+            nested = connection.begin_nested()
 
     yield session
 
