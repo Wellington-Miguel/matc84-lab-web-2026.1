@@ -76,12 +76,17 @@ export class PaymentService {
     }
 
     await this.orderRepository.savePaid(attempt.order);
-    await this.stockGateway.debit(
-      attempt.order.products.map((product) => ({
-        productId: product.productId,
-        quantity: product.quantity,
-      })),
-    );
+    try {
+      await this.stockGateway.debit(
+        attempt.order.products.map((product) => ({
+          productId: product.productId,
+          quantity: product.quantity,
+        })),
+      );
+    } catch (error) {
+      await this.orderRepository.saveRefundPending(attempt.order);
+      throw error;
+    }
 
     const payment = await this.paymentRepository.create({
       id: randomUUID(),

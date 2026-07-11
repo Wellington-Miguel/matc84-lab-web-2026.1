@@ -71,18 +71,29 @@ export class PrismaOrderRepository implements OrderRepository {
   }
 
   async savePaid(order: Order): Promise<Order> {
+    return this.saveWithStatus(order, OrderStatus.PAID);
+  }
+
+  async saveRefundPending(order: Order): Promise<Order> {
+    return this.saveWithStatus(order, OrderStatus.REFUND_PENDING);
+  }
+
+  private async saveWithStatus(
+    order: Order,
+    status: OrderStatus,
+  ): Promise<Order> {
     const persisted = await this.prisma.order.upsert({
       where: { id: order.id },
       create: {
         id: order.id,
         clientId: order.clientId,
-        status: 'paid',
+        status,
         products: order.products,
         total: order.total,
         createdAt: order.createdAt,
       },
       update: {
-        status: 'paid',
+        status,
         products: order.products,
         total: order.total,
       },
@@ -91,7 +102,7 @@ export class PrismaOrderRepository implements OrderRepository {
     return new Order(
       persisted.id,
       persisted.clientId,
-      OrderStatus.PAID,
+      status,
       order.products,
       Number(persisted.total),
       persisted.createdAt,

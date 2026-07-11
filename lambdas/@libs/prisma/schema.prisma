@@ -13,6 +13,7 @@ enum OrderStatus {
   pending
   cancelled
   paid
+  refund_pending
   completed
 
   @@schema("pedidos")

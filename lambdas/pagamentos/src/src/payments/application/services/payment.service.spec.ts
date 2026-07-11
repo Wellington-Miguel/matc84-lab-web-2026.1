@@ -46,6 +46,7 @@ describe('PaymentService', () => {
     orderRepository = {
       findById: jest.fn(),
       savePaid: jest.fn(),
+      saveRefundPending: jest.fn(),
     };
     stockGateway = {
       debit: jest.fn(),
@@ -96,6 +97,44 @@ describe('PaymentService', () => {
       attempt.id,
       expect.any(Date),
     );
+  });
+
+  it('marks order as refund pending when stock debit fails after paid status', async () => {
+    const attempt = new PaymentAttempt(
+      'attempt-1',
+      order,
+      '4b4aa367-7e61-44a2-8c56-0a052d8dd649',
+      new Date(Date.now() + 30_000),
+      new Date(),
+    );
+    const error = new BadRequestException('Estoque insuficiente');
+
+    attemptRepository.findByToken.mockResolvedValue(attempt);
+    orderRepository.savePaid.mockResolvedValue(order);
+    orderRepository.saveRefundPending.mockResolvedValue(
+      new Order(
+        order.id,
+        order.clientId,
+        OrderStatus.REFUND_PENDING,
+        order.products,
+        order.total,
+        order.createdAt,
+      ),
+    );
+    stockGateway.debit.mockRejectedValue(error);
+
+    await expect(service.pay({ token: attempt.token })).rejects.toBe(error);
+
+    expect(orderRepository.savePaid).toHaveBeenCalledWith(order);
+    expect(orderRepository.saveRefundPending).toHaveBeenCalledWith(order);
+    expect(orderRepository.savePaid.mock.invocationCallOrder[0]).toBeLessThan(
+      stockGateway.debit.mock.invocationCallOrder[0],
+    );
+    expect(stockGateway.debit.mock.invocationCallOrder[0]).toBeLessThan(
+      orderRepository.saveRefundPending.mock.invocationCallOrder[0],
+    );
+    expect(paymentRepository.create).not.toHaveBeenCalled();
+    expect(attemptRepository.markAsPaid).not.toHaveBeenCalled();
   });
 
   it('creates a payment attempt for an order id', async () => {
